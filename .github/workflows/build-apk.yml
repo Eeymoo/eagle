@@ -5,6 +5,9 @@ on:
     branches: [release]   # 只有推送到 release 分支才出包（快照分支）
   workflow_dispatch:
 
+permissions:
+  contents: write   # required to create snapshot releases
+
 jobs:
   build:
     runs-on: ubuntu-latest
