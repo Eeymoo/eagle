@@ -18,12 +18,12 @@ if (DSN) {
     dsn: DSN,
     // GlitchTip is protocol-compatible with Sentry; send minimal PII.
     sendDefaultPii: false,
-    attachScreenshot: false,
     environment: __DEV__ ? 'development' : 'production',
-    // Native crashes (most likely cause of launch crash) are captured by
-    // the native SDK on next launch; JS errors captured immediately.
-    enableNative: true,
-    // Keep boot resilient: never block startup on crash reporting.
+    // JS-only integration: no native Gradle plugin (no sentry-cli at build
+    // time, no Sentry credentials needed). JS errors + breadcrumbs are
+    // captured; native crashes are surfaced via the fatal-JS event instead.
+    enableNative: false,
+    enableNativeNagger: false,
     enableAutoSessionTracking: true,
   });
   // Expose for rn-ui-plugin's bootTrace breadcrumbs (no import cycle).
