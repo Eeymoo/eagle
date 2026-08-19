@@ -2,8 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [master, main]
-    tags: ['v*']
+    branches: [release]   # 只有推送到 release 分支才出包（快照分支）
   workflow_dispatch:
 
 jobs:
@@ -64,11 +63,17 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Release on tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Release snapshot
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: snapshot-${{ github.run_number }}
+          name: Snapshot #${{ github.run_number }}
+          body: |
+            自动快照构建（release 分支 @ ${{ github.sha }})
+            - GlitchTip 崩溃上报已内置
+            - 产物: APK (arm64/armv7/x86/x86_64 通用)
           files: apps/mobile/android/app/build/outputs/apk/release/*.apk
+          make_latest: false
 
       - name: Summary
         run: |
