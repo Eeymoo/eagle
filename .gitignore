@@ -5,3 +5,4 @@ apps/mobile/.expo/
 apps/mobile/android/
 apps/mobile/ios/
 *.log
+!.github/

@@ -1,0 +1,79 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: .
+        run: pnpm -r --if-present run typecheck
+
+      - name: Generate native project
+        run: npx expo prebuild --platform android --clean
+
+      - name: Build release APK
+        working-directory: apps/mobile/android
+        run: |
+          echo "::group::Gradle Build"
+          ./gradlew assembleRelease \
+            -x lint \
+            -Pkotlin.incremental=true \
+            --no-daemon \
+            -Dorg.gradle.jvmargs="-Xmx3g"
+          echo "::endgroup::"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eagle-apk
+          path: apps/mobile/android/app/build/outputs/apk/release/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Release on tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/mobile/android/app/build/outputs/apk/release/*.apk
+
+      - name: Summary
+        run: |
+          APK=$(ls ../android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -1 || ls android/app/build/outputs/apk/release/*.apk | head -1)
+          echo "## 📦 Eagle APK 构建完成" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 产物: \`$APK\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 下载: Actions 页面 → 本次运行 → Artifacts → eagle-apk" >> $GITHUB_STEP_SUMMARY
