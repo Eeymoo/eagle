@@ -24,6 +24,21 @@ config.resolver.unstable_enablePackageExposesTsExports = true;
 // foo.ts). Metro doesn't rewrite .js→.ts on its own — bridge it here.
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // PATCH: expo 54.0.37 winter runtime references global FormData at module
+  // top level (before RN injects the polyfill) → startup ReferenceError.
+  // Resolve normally, then swap in our guarded copy if it's the winter runtime
+  // (imported as './runtime', resolved to runtime.native.ts via platform ext).
+  if (
+    moduleName === './runtime' &&
+    /[/\\]expo[/\\]src[/\\]winter[/\\]/.test(context.originModulePath || '')
+  ) {
+    const patched = path.join(projectRoot, 'patches/expo-winter-runtime');
+    return (defaultResolveRequest ?? context.resolveRequest)(
+      { ...context, originModulePath: projectRoot },
+      patched,
+      platform,
+    );
+  }
   // Redirect any react-native resolution (including nested RN internals and
   // peer imports from @eagle/rn-ui-plugin) to the single root copy.
   if (moduleName === 'react-native' || moduleName.startsWith('react-native/')) {
