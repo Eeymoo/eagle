@@ -13,5 +13,8 @@
     "build": "pnpm --filter @eagle/core build && pnpm --filter '@eagle/*-plugin' run build",
     "test": "pnpm --filter '@eagle/*' run test",
     "docs": "node scripts/print-tree.mjs"
+  },
+  "devDependencies": {
+    "expo": "~54.0.37"
   }
 }
