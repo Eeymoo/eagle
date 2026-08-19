@@ -6,3 +6,5 @@ apps/mobile/android/
 apps/mobile/ios/
 *.log
 !.github/
+apps/mobile/dist-check/
+apps/mobile/dist/
