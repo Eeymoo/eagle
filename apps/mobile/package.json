@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@expo/metro-config": "~54.0.17",
+    "@sentry/cli": "2.55.0",
     "@types/react": "~19.1.0",
     "typescript": "~5.8.2"
   }
