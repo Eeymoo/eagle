@@ -26,6 +26,18 @@ import { SettingsScreen } from './SettingsScreen.js';
 /** Source-plugin composition for the MVP build. */
 export const MVP_PLUGINS: SourcePlugin[] = [jellyfinPlugin, m3uTunerPlugin, hdHomeRunPlugin];
 
+/**
+ * Boot-stage breadcrumbs: if the app crashes at startup, GlitchTip shows the
+ * last reached stage. No-op (console only) when Sentry is not configured.
+ */
+function bootTrace(): (msg: string) => void {
+  const scope = globalThis as { __EAGLE_SENTRY__?: { addBreadcrumb(m: unknown): void } };
+  return (msg: string) => {
+    console.log(`[eagle:boot] ${msg}`);
+    scope.__EAGLE_SENTRY__?.addBreadcrumb({ category: 'boot', message: msg, level: 'info' });
+  };
+}
+
 type Route = 'list' | 'player' | 'settings';
 
 export function EagleApp(): React.JSX.Element {
@@ -34,13 +46,19 @@ export function EagleApp(): React.JSX.Element {
 
   useEffect(() => {
     (async () => {
+      const trace = bootTrace();
       try {
+        trace('creating settings store');
         const settings = await createSettingsStore();
+        trace('composing core');
         const core = new EagleCore(new ReactNativePort(), settings);
         for (const p of MVP_PLUGINS) core.use(p);
+        trace(`hydrating (${MVP_PLUGINS.length} plugins)`);
         await core.hydrate();
+        trace('boot complete');
         setControllers(createEagleControllers(core));
       } catch (e) {
+        trace(`boot failed: ${e instanceof Error ? e.message : String(e)}`);
         setBootError(e instanceof Error ? e.message : String(e));
       }
     })();
