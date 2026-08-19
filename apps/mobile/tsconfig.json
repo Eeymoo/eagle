@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@eagle/core": ["../../packages/core/src/index.ts"],
+      "@eagle/jellyfin-plugin": ["../../packages/jellyfin-plugin/src/index.ts"],
+      "@eagle/m3u-tuner-plugin": ["../../packages/m3u-tuner-plugin/src/index.ts"],
+      "@eagle/hdhome-run-plugin": ["../../packages/hdhome-run-plugin/src/index.ts"],
+      "@eagle/headless-ui": ["../../packages/headless-ui/src/index.ts"],
+      "@eagle/design-tokens/rn": ["../../packages/design-tokens/src/generated/rn.ts"],
+      "@eagle/design-tokens": ["../../packages/design-tokens/src/index.ts"],
+      "@eagle/rn-ui-plugin": ["../../packages/rn-ui-plugin/src/index.ts"]
+    }
+  },
+  "include": ["index.ts", "../../packages/rn-ui-plugin/src"]
+}

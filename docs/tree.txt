@@ -1,0 +1,100 @@
+.
+|-- .gitignore
+|-- lerna.json
+|-- package.json
+|-- pnpm-workspace.yaml
+|-- README.md
+|-- docs
+|   |-- adr.md
+|   |-- dev.md
+|   `-- tree.txt
+|-- packages
+|   |-- core
+|   |   |-- package.json
+|   |   |-- tsconfig.json
+|   |   |-- vitest.config.md
+|   |   |-- vitest.config.ts
+|   |   `-- src
+|   |       |-- eagle.test.ts
+|   |       |-- eagle.ts
+|   |       |-- index.ts
+|   |       |-- plugin.ts
+|   |       |-- port-fetch.ts
+|   |       |-- port-memory.ts
+|   |       |-- settings-memory.ts
+|   |       |-- source.ts
+|   |       `-- types.ts
+|   |-- hdhome-run-plugin
+|   |   |-- package.json
+|   |   |-- tsconfig.json
+|   |   |-- vitest.config.ts
+|   |   `-- src
+|   |       |-- hdhome-run.test.ts
+|   |       |-- hdhome-run.ts
+|   |       `-- index.ts
+|   |-- jellyfin-plugin
+|   |   |-- package.json
+|   |   |-- tsconfig.json
+|   |   |-- vitest.config.ts
+|   |   `-- src
+|   |       |-- index.ts
+|   |       |-- jellyfin.test.ts
+|   |       |-- jellyfin.ts
+|   |       `-- plugin.ts
+|   |-- m3u-tuner-plugin
+|   |   |-- package.json
+|   |   |-- tsconfig.json
+|   |   |-- vitest.config.ts
+|   |   `-- src
+|   |       |-- index.ts
+|   |       |-- m3u-tuner.test.ts
+|   |       `-- m3u-tuner.ts
+|   |-- rn-ui-plugin
+|   |   |-- package.json
+|   |   |-- tsconfig.json
+|   |   `-- src
+|   |       |-- App.tsx
+|   |       |-- ChannelListScreen.tsx
+|   |       |-- index.ts
+|   |       |-- platform.ts
+|   |       |-- PlayerScreen.tsx
+|   |       |-- SettingsScreen.tsx
+|   |       `-- store.ts
+|   `-- tauri-ui-plugin
+|       |-- package.json
+|       |-- tsconfig.json
+|       `-- src
+|           `-- index.ts
+|-- scripts
+|   |-- eagle.mjs
+|   `-- print-tree.mjs
+`-- tools
+    |-- pnpm-bin-pnpm
+    |-- bin
+    |   `-- pnpm
+    |-- npmcache
+    |   |-- _update-notifier-last-checked
+    |   |-- _cacache
+    |   |   |-- content-v2 (…)
+    |   |   |-- index-v5 (…)
+    |   |   `-- tmp (…)
+    |   `-- _logs
+    |       |-- 2026-08-18T19_08_46_842Z-debug-0.log
+    |       |-- 2026-08-18T19_09_09_879Z-debug-0.log
+    |       |-- 2026-08-18T19_09_16_545Z-debug-0.log
+    |       `-- 2026-08-18T19_09_22_887Z-debug-0.log
+    |-- package
+    |   |-- LICENSE
+    |   |-- package.json
+    |   |-- README.md
+    |   `-- bin
+    |       |-- pnpm.cjs
+    |       `-- pnpx.cjs
+    |-- pnpm-home
+    |   `-- store
+    |       `-- v10 (…)
+    |-- pnpm-store
+    |   `-- v10
+    |       |-- files (…)
+    |       `-- index (…)
+    `-- xdg

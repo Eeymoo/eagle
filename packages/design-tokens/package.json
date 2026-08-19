@@ -1,0 +1,32 @@
+{
+  "name": "@eagle/design-tokens",
+  "version": "0.1.0",
+  "description": "Eagle design tokens — single source of truth generated for RN and Web/Tauri",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./rn": {
+      "types": "./lib/rn.d.ts",
+      "default": "./lib/rn.js"
+    },
+    "./css": "./dist/tokens.css"
+  },
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "scripts": {
+    "build": "node ./src/build.mjs && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.2"
+  },
+  "react-native": "./src/rn.ts"
+}

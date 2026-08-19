@@ -1,0 +1,17 @@
+{
+  "name": "eagle-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "bootstrap": "pnpm install",
+    "core": "pnpm --filter @eagle/core",
+    "rn": "pnpm --filter @eagle/rn-ui-plugin",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "build": "pnpm --filter @eagle/core build && pnpm --filter '@eagle/*-plugin' run build",
+    "test": "pnpm --filter '@eagle/*' run test",
+    "docs": "node scripts/print-tree.mjs"
+  }
+}

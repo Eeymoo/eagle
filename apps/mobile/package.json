@@ -1,0 +1,35 @@
+{
+  "name": "@eagle/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "prebuild": "expo prebuild --clean",
+    "build:js": "expo export --platform android && expo export --platform ios",
+    "apk": "eas build -p android --profile preview",
+    "ipa": "eas build -p ios --profile preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eagle/core": "workspace:*",
+    "@eagle/jellyfin-plugin": "workspace:*",
+    "@eagle/m3u-tuner-plugin": "workspace:*",
+    "@eagle/hdhome-run-plugin": "workspace:*",
+    "@eagle/headless-ui": "workspace:*",
+    "@eagle/design-tokens": "workspace:*",
+    "@eagle/rn-ui-plugin": "workspace:*",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~54.0.37",
+    "react": "19.1.0",
+    "react-native": "0.81.4",
+    "react-native-video": "^6.16.0"
+  },
+  "devDependencies": {
+    "@expo/metro-config": "~54.0.17",
+    "@types/react": "~19.1.0",
+    "typescript": "~5.8.2"
+  }
+}

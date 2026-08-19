@@ -1,0 +1,31 @@
+{
+  "name": "@eagle/m3u-tuner-plugin",
+  "version": "0.1.0",
+  "description": "Eagle M3U Tuner source plugin — playlist import and channel parsing",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    }
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@eagle/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.2",
+    "vitest": "3.2.4"
+  },
+  "react-native": "./src/index.ts"
+}

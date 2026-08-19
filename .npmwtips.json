@@ -1,0 +1,27 @@
+export default [
+  {
+    type: 'separator',
+    title: 'CORE (apps/ios, apps/android, apps/rn, apps/rn-dev)',
+    cmd: 'node scripts/eagle.mjs rn dev --packager false',
+  },
+  {
+    type: 'separator',
+    title: 'EAGLE: SERVER (apps/rn-dev, apps/rn)',
+    cmd: 'node scripts/eagle.mjs rn dev --port 8081',
+  },
+  {
+    type: 'separator',
+    title: 'CORE: IOS (apps/ios)',
+    cmd: 'node scripts/eagle.mjs ios',
+  },
+  {
+    type: 'separator',
+    title: 'CORE: ANDROID (apps/android)',
+    cmd: 'node scripts/eagle.mjs android',
+  },
+  {
+    type: 'separator',
+    title: 'EAGLE: WEB (apps/web) [Tauri]',
+    cmd: 'node scripts/eagle.mjs web dev --port 5183',
+  },
+];

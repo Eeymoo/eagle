@@ -1,0 +1,10 @@
+{
+  "packages": ["packages/*", "apps/*"],
+  "version": "independent",
+  "$schema": "https://unpkg.com/lerna@4.0.0/core/schemas/lerna-schema.json",
+  "command": {
+    "bootstrap": {
+      "npmClient": "pnpm"
+    }
+  }
+}

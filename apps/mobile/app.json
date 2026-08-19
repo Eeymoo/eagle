@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Eagle",
+    "slug": "eagle",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0e1116",
+    "android": {
+      "package": "org.eagle.livetv",
+      "usesCleartextTraffic": true
+    },
+    "ios": {
+      "bundleIdentifier": "org.eagle.livetv",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
+    },
+    "plugins": [],
+    "extra": {
+      "eas": {
+        "projectId": "37657185-ab59-47c0-83e5-11f4f54cc046"
+      }
+    },
+    "owner": "eeymoo"
+  }
+}
