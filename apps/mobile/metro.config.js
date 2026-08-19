@@ -7,14 +7,15 @@ const workspaceRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch the whole monorepo so packages/*/src changes hot-reload.
+// CRITICAL: exactly ONE react-native copy must reach the bundle.
+// pnpm hoisted mode still places a physical copy under apps/mobile/node_modules
+// for direct deps; two RN copies split the ViewConfig registry (RCTText crash).
+// Resolution order below deliberately resolves react-native (and its internals)
+// from the workspace root only.
 config.watchFolders = [workspaceRoot];
-// Resolve node_modules both locally and at the workspace root (pnpm layout).
 config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
-// pnpm symlinks point outside projectRoot; Metro needs this enabled.
 config.resolver.enablePackageExports = true;
 config.resolver.unstable_enableSymlinks = true;
 config.resolver.unstable_enablePackageExposesTsExports = true;
@@ -23,6 +24,16 @@ config.resolver.unstable_enablePackageExposesTsExports = true;
 // foo.ts). Metro doesn't rewrite .js→.ts on its own — bridge it here.
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Redirect any react-native resolution (including nested RN internals and
+  // peer imports from @eagle/rn-ui-plugin) to the single root copy.
+  if (moduleName === 'react-native' || moduleName.startsWith('react-native/')) {
+    const rooted = path.join(workspaceRoot, 'node_modules', moduleName);
+    return (defaultResolveRequest ?? context.resolveRequest)(
+      { ...context, originModulePath: workspaceRoot },
+      rooted,
+      platform,
+    );
+  }
   if (moduleName.endsWith('.js') && !moduleName.endsWith('.config.js')) {
     for (const candidate of [
       moduleName.slice(0, -3) + '.ts',

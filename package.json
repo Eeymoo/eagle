@@ -15,6 +15,7 @@
     "docs": "node scripts/print-tree.mjs"
   },
   "devDependencies": {
-    "expo": "~54.0.37"
+    "expo": "~54.0.37",
+    "react-native": "0.81.4"
   }
 }
