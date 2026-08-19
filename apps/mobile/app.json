@@ -22,7 +22,12 @@
       }
     },
     "plugins": [
-      "@sentry/react-native"
+      [
+        "@sentry/react-native",
+        {
+          "sourcemaps": { "upload": false }
+        }
+      ]
     ],
     "extra": {
       "eas": {
