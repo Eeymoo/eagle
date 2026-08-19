@@ -14,6 +14,9 @@
       },
       "ios": {
         "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_SENTRY_DSN": "https://962e8f28e71f4811bd73e2f162539ea9@glitchtip.onemue.cn/7"
       }
     },
     "production": {
