@@ -9,9 +9,13 @@
  * @sentry/browser feedback) touches browser-only APIs — before RN's polyfills
  * exist — crashing the app on startup.
  */
+// BISECT STEP: Sentry init disabled — testing whether render hangs with it on.
+// Re-enable once black-screen root cause is confirmed.
 import * as Sentry from '@sentry/react-native/dist/js/sdk';
-import { captureMessage, addBreadcrumb } from '@sentry/core';
 
+const DSN = undefined as unknown as string; // process.env.EXPO_PUBLIC_SENTRY_DSN;
+void Sentry; void DSN;
+/*
 const DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
 if (DSN) {
@@ -32,3 +36,4 @@ if (DSN) {
 } else {
   console.warn('[eagle] EXPO_PUBLIC_SENTRY_DSN not set — crash reporting disabled');
 }
+*/
