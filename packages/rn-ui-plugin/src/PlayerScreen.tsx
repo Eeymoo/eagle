@@ -26,6 +26,33 @@ const Video = RawVideo as unknown as React.ComponentType<{
   onError?: (e: unknown) => void;
 }>;
 
+/**
+ * Extract a human-readable message from react-native-video's nested error
+ * payload (e.error.{errorString, errorException, errorCode, ...}). Never
+ * returns "[object Object]".
+ */
+function describeVideoError(e: unknown): string {
+  if (typeof e === 'string') return e;
+  const err = (e as { error?: Record<string, unknown> })?.error ?? (e as Record<string, unknown>);
+  if (!err || typeof err !== 'object') return '未知错误';
+  const parts: string[] = [];
+  const code = err.errorCode ?? err.code;
+  if (typeof code === 'number' || (typeof code === 'string' && code)) parts.push(`错误码 ${code}`);
+  const desc =
+    err.errorException ?? err.errorString ?? err.localizedDescription ??
+    err.error ?? err.localizedDescription ?? err.localizedFailureReason;
+  if (typeof desc === 'string' && desc) parts.push(desc);
+  if (parts.length === 0) {
+    // last resort: JSON but capped
+    try {
+      parts.push(JSON.stringify(err).slice(0, 120));
+    } catch {
+      parts.push('未知错误');
+    }
+  }
+  return parts.join('：');
+}
+
 export interface PlayerScreenProps {
   controller: PlayerController;
   channel: Channel;
@@ -65,7 +92,10 @@ export function PlayerScreen({ controller, channel, onBack }: PlayerScreenProps)
         {state.status === 'resolving' && <ActivityIndicator size="large" color={t.colors.accent} />}
         {state.status === 'error' && (
           <>
-            <Text style={styles.error}>播放失败：{state.errorMessage}</Text>
+            <Text style={styles.error}>播放失败{state.errorMessage ? `\n${state.errorMessage}` : ''}</Text>
+            <Text style={styles.errorHint}>
+              直播源地址可能失效或网络不可达，可尝试重试或换一个频道。
+            </Text>
             <Pressable style={styles.retry} onPress={() => void controller.open(channel)}>
               <Text style={styles.retryText}>重试</Text>
             </Pressable>
@@ -79,7 +109,7 @@ export function PlayerScreen({ controller, channel, onBack }: PlayerScreenProps)
             controls
             ignoreSilentSwitch="ignore"
             onLoad={() => controller.onMediaPlaying()}
-            onError={(e) => controller.onMediaError(String(e))}
+            onError={(e) => controller.onMediaError(describeVideoError(e))}
           />
         )}
       </View>
@@ -119,7 +149,14 @@ const styles = StyleSheet.create({
   status: { color: t.colors.textSecondary, fontSize: t.typography.fontSizeXs },
   videoWrap: { flex: 1, backgroundColor: t.colors.bgOverlay },
   video: { flex: 1 },
-  error: { color: t.colors.danger, textAlign: 'center', marginTop: t.spacing.xl },
+  error: { color: t.colors.danger, textAlign: 'center', marginTop: t.spacing.xl, fontSize: t.typography.fontSizeMd },
+  errorHint: {
+    color: t.colors.textSecondary,
+    textAlign: 'center',
+    marginTop: t.spacing.sm,
+    paddingHorizontal: t.spacing.xl,
+    fontSize: t.typography.fontSizeXs,
+  },
   retry: { alignSelf: 'center', marginTop: t.spacing.md, padding: t.spacing.sm },
   retryText: { color: t.colors.accent },
   meta: {
