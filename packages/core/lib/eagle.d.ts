@@ -23,6 +23,8 @@ export declare class EagleCore {
     use(plugin: SourcePlugin): this;
     /** All registered plugins (settings screens iterate this for "add source"). */
     listPlugins(): SourcePlugin[];
+    /** Read-only settings access for heads (feature flags, persisted prefs). */
+    get settingsStore(): SettingsStore;
     /** Restore previously configured sources from settings. */
     hydrate(): Promise<void>;
     listSources(): SourceRef[];

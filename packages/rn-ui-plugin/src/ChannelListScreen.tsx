@@ -6,24 +6,31 @@
 import React, { useEffect } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { Channel } from '@eagle/core';
-import type { ChannelListController } from '@eagle/headless-ui';
-import { useChannelList } from '@eagle/headless-ui';
+import type { ChannelListController, HealthController } from '@eagle/headless-ui';
+import { useChannelList, useHealth } from '@eagle/headless-ui';
 import { t } from './theme.js';
 
 export interface ChannelListScreenProps {
   controller: ChannelListController;
+  health: HealthController;
   onPlay: (channel: Channel) => void;
   onOpenSettings: () => void;
 }
 
-export function ChannelListScreen({ controller, onPlay, onOpenSettings }: ChannelListScreenProps) {
+export function ChannelListScreen({ controller, health, onPlay, onOpenSettings }: ChannelListScreenProps) {
   const state = useChannelList(controller);
+  const healthState = useHealth(health);
 
   useEffect(() => {
-    void controller.refresh();
-  }, [controller]);
+    void controller.refresh().then(() => {
+      // Refresh-time screening (unless disabled in settings).
+      if (health.getState().checkOnRefresh) {
+        void health.probe(controller.getState().channels);
+      }
+    });
+  }, [controller, health]);
 
-  const visible = controller.visibleChannels();
+  const visible = health.filter(controller.visibleChannels());
 
   return (
     <View style={styles.root}>
@@ -51,7 +58,16 @@ export function ChannelListScreen({ controller, onPlay, onOpenSettings }: Channe
         </Text>
       )}
       {state.status === 'ready' && visible.length === 0 && (
-        <Text style={styles.hint}>没有频道。请到设置添加 Jellyfin / M3U Tuner / HDHomeRun 源。</Text>
+        <Text style={styles.hint}>
+          {healthState.hideBad
+            ? '频道都被过滤了或暂无频道。可在设置中关闭"隐藏坏台"。'
+            : '没有频道。请到设置添加 Jellyfin / M3U Tuner / HDHomeRun 源。'}
+        </Text>
+      )}
+      {healthState.inflight > 0 && (
+        <Text style={styles.healthHint}>
+          🔍 体检中… 剩余 {healthState.inflight} 个频道
+        </Text>
       )}
 
       <FlatList
@@ -99,6 +115,7 @@ const styles = StyleSheet.create({
   gear: { padding: t.spacing.sm },
   gearText: { color: t.colors.textPrimary, fontSize: t.typography.fontSizeLg },
   hint: { color: t.colors.textSecondary, textAlign: 'center', marginTop: t.spacing.xl },
+  healthHint: { color: t.colors.accent, textAlign: 'center', fontSize: t.typography.fontSizeXs, paddingVertical: t.spacing.xs },
   error: { color: t.colors.danger, textAlign: 'center', marginTop: t.spacing.xl },
   retry: { color: t.colors.accent },
   row: { flexDirection: 'row', alignItems: 'center', padding: t.spacing.md, gap: t.spacing.md },

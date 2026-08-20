@@ -11,6 +11,8 @@ import type { AddSourceFormState } from './add-source-form.js';
 import { PlayerController } from './player.js';
 import type { PlayerState } from './player.js';
 import { SourcesController } from './sources.js';
+import { HealthController } from './health.js';
+import type { HealthState } from './health.js';
 
 /** Subscribe to a controller's state with a stable snapshot. */
 export function useChannelList(controller: ChannelListController): ChannelListState {
@@ -38,6 +40,14 @@ export function usePlayer(controller: PlayerController): PlayerState {
 }
 
 export function useSources(controller: SourcesController): { sources: import('@eagle/core').SourceRef[]; version: number } {
+  return useSyncExternalStore(
+    controller.subscribe,
+    controller.getState,
+    controller.getState,
+  );
+}
+
+export function useHealth(controller: HealthController): HealthState {
   return useSyncExternalStore(
     controller.subscribe,
     controller.getState,

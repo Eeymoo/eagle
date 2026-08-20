@@ -4,20 +4,22 @@
  * Fields render from plugin.formFields; styling is 100% design tokens.
  */
 import React, { useMemo } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import type { AddSourceFormController, SourcesController } from '@eagle/headless-ui';
-import { useAddSourceForm, useSources } from '@eagle/headless-ui';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import type { AddSourceFormController, HealthController, SourcesController } from '@eagle/headless-ui';
+import { useAddSourceForm, useHealth, useSources } from '@eagle/headless-ui';
 import { t } from './theme.js';
 
 export interface SettingsScreenProps {
   form: AddSourceFormController;
   sources: SourcesController;
+  health: HealthController;
   onBack: () => void;
 }
 
-export function SettingsScreen({ form, sources, onBack }: SettingsScreenProps) {
+export function SettingsScreen({ form, sources, health, onBack }: SettingsScreenProps) {
   const formState = useAddSourceForm(form);
   const { sources: configured } = useSources(sources);
+  const healthState = useHealth(health);
   const plugins = useMemo(() => form.plugins(), [form]);
   const active = formState.kind ?? plugins[0]?.kind ?? '';
 
@@ -60,6 +62,39 @@ export function SettingsScreen({ form, sources, onBack }: SettingsScreenProps) {
           </Pressable>
         </View>
       ))}
+
+      <Text style={styles.section}>播放源体检</Text>
+      <View style={styles.prefRow}>
+        <View style={styles.prefText}>
+          <Text style={styles.prefTitle}>刷新时自动体检</Text>
+          <Text style={styles.prefDesc}>每次刷新频道列表时后台探测坏源</Text>
+        </View>
+        <Switch
+          value={healthState.checkOnRefresh}
+          onValueChange={(v) => void health.setCheckOnRefresh(v)}
+          trackColor={{ true: t.colors.accent }}
+        />
+      </View>
+      <View style={styles.prefRow}>
+        <View style={styles.prefText}>
+          <Text style={styles.prefTitle}>隐藏坏台</Text>
+          <Text style={styles.prefDesc}>探测失败的频道自动从列表隐藏</Text>
+        </View>
+        <Switch
+          value={healthState.hideBad}
+          onValueChange={(v) => void health.setHideBad(v)}
+          trackColor={{ true: t.colors.accent }}
+        />
+      </View>
+      <Pressable
+        style={styles.recheckBtn}
+        onPress={() => {
+          health.forget();
+          Alert.alert('已重置体检结果', '返回列表刷新后将重新体检全部频道。');
+        }}
+      >
+        <Text style={styles.recheckText}>重置体检结果</Text>
+      </Pressable>
 
       <Text style={styles.section}>添加源（按已注册插件）</Text>
       <View style={styles.tabs}>
@@ -123,6 +158,29 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   hint: { color: t.colors.textDisabled },
+  prefRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: t.spacing.sm,
+    paddingHorizontal: t.spacing.md,
+    backgroundColor: t.colors.bgSurface,
+    borderRadius: 8,
+    marginBottom: t.spacing.xs,
+  },
+  prefText: { flex: 1, paddingRight: t.spacing.md },
+  prefTitle: { color: t.colors.textPrimary, fontSize: t.typography.fontSizeSm },
+  prefDesc: { color: t.colors.textSecondary, fontSize: t.typography.fontSizeXs, marginTop: 2 },
+  recheckBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: t.spacing.xs,
+    paddingHorizontal: t.spacing.md,
+    marginTop: t.spacing.xs,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: t.colors.borderSubtle,
+  },
+  recheckText: { color: t.colors.accent, fontSize: t.typography.fontSizeSm },
   formError: { color: t.colors.danger, fontSize: t.typography.fontSizeSm },
   sourceRow: {
     flexDirection: 'row',

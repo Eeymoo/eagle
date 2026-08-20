@@ -46,6 +46,11 @@ export class EagleCore {
     return [...this.plugins.values()];
   }
 
+  /** Read-only settings access for heads (feature flags, persisted prefs). */
+  get settingsStore(): SettingsStore {
+    return this.settings;
+  }
+
   /** Restore previously configured sources from settings. */
   async hydrate(): Promise<void> {
     const stored = await this.settings.get<StoredSource[]>(SOURCES_KEY);

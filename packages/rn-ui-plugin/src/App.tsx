@@ -109,6 +109,7 @@ export function EagleApp(): React.JSX.Element {
         {route === 'list' && (
           <ChannelListScreen
             controller={controllers.channelList}
+            health={controllers.health}
             onPlay={play}
             onOpenSettings={() => setRoute('settings')}
           />
@@ -124,6 +125,7 @@ export function EagleApp(): React.JSX.Element {
           <SettingsScreen
             form={controllers.addSourceForm}
             sources={controllers.sources}
+            health={controllers.health}
             onBack={() => setRoute('list')}
           />
         )}
