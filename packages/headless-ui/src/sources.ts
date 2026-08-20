@@ -16,6 +16,13 @@ export class SourcesController {
   private version = 0;
   private listeners = new Set<() => void>();
   private deps: SourcesControllerDeps;
+  /**
+   * Cached snapshot — CRITICAL: useSyncExternalStore requires getSnapshot to
+   * return a reference-stable value between mutations. Returning a fresh
+   * object literal per call sends React into an infinite re-render loop
+   * ("Maximum update depth exceeded" → crash on opening the settings screen).
+   */
+  private snapshot: { sources: SourceRef[]; version: number } = { sources: [], version: 0 };
 
   constructor(deps: SourcesControllerDeps) {
     this.deps = deps;
@@ -28,14 +35,12 @@ export class SourcesController {
     return () => this.listeners.delete(listener);
   };
 
-  getState = (): { sources: SourceRef[]; version: number } => ({
-    sources: this.sources,
-    version: this.version,
-  });
+  getState = (): { sources: SourceRef[]; version: number } => this.snapshot;
 
   refresh(): void {
     this.sources = this.deps.list();
     this.version++;
+    this.snapshot = { sources: this.sources, version: this.version };
     for (const l of this.listeners) l();
   }
 
