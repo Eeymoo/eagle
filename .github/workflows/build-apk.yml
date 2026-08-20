@@ -43,6 +43,22 @@ jobs:
         working-directory: .
         run: pnpm -r --if-present run typecheck
 
+      - name: Bump snapshot version
+        run: |-
+          node -e "
+            const fs = require('fs');
+            const f = 'apps/mobile/app.json';
+            const d = JSON.parse(fs.readFileSync(f, 'utf8'));
+            const n = process.env.RUN_NUMBER;
+            d.expo.version = '0.1.' + n;
+            d.expo.android = d.expo.android || {};
+            d.expo.android.versionCode = n;
+            fs.writeFileSync(f, JSON.stringify(d, null, 2));
+            console.log('snapshot version: ' + d.expo.version + ' (code ' + n + ')');
+          "
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+
       - name: Generate native project
         run: npx expo prebuild --platform android --clean
 
