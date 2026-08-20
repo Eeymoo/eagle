@@ -8,7 +8,8 @@
     "backgroundColor": "#0e1116",
     "android": {
       "package": "org.eagle.livetv",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "edgeToEdgeEnabled": true
     },
     "ios": {
       "bundleIdentifier": "org.eagle.livetv",
@@ -27,6 +28,16 @@
         "projectId": "37657185-ab59-47c0-83e5-11f4f54cc046"
       }
     },
-    "owner": "eeymoo"
+    "owner": "eeymoo",
+    "icon": "./assets/icon.png",
+    "adaptiveIcon": {
+      "foregroundImage": "./assets/adaptive-icon.png",
+      "backgroundColor": "#0e1116"
+    },
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0e1116"
+    }
   }
 }

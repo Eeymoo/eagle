@@ -12,7 +12,10 @@ import { createElement } from 'react';
 import { registerRootComponent } from 'expo';
 import { EagleApp } from '@eagle/rn-ui-plugin';
 
+console.log('[eagle:entry] modules loaded, registering root');
+
 function Root(): React.JSX.Element {
+  console.log('[eagle:entry] Root render called');
   return createElement(EagleApp);
 }
 

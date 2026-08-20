@@ -10,7 +10,8 @@
  * tokens; this file is pure wiring — which is exactly what a "head" should be.
  */
 import React, { useEffect, useState } from 'react';
-import { StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
+import * as Application from 'expo-application';
 import { EagleCore } from '@eagle/core';
 import type { Channel, SourcePlugin } from '@eagle/core';
 import { jellyfinPlugin } from '@eagle/jellyfin-plugin';
@@ -111,8 +112,16 @@ export function EagleApp(): React.JSX.Element {
           onBack={() => setRoute('list')}
         />
       )}
+      <Text style={styles.versionBadge}>{versionLabel()}</Text>
     </View>
   );
+}
+
+/** Snapshot builds carry 0.1.N (N = run number); show it bottom-right. */
+function versionLabel(): string {
+  const nativeVersion = Application.nativeApplicationVersion ?? '0';
+  const build = Application.nativeBuildVersion ?? '';
+  return build ? `v${nativeVersion} (${build})` : `v${nativeVersion}`;
 }
 
 const styles = StyleSheet.create({
@@ -120,4 +129,12 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0e1116' },
   hint: { color: '#8b95a5' },
   errorText: { color: '#ff6b6b' },
+  versionBadge: {
+    position: 'absolute',
+    right: 12,
+    bottom: Platform.select({ ios: 24, default: 12 }),
+    color: '#5b6270',
+    fontSize: 11,
+    zIndex: 999,
+  },
 });

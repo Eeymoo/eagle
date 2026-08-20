@@ -47,7 +47,7 @@ jobs:
         run: |-
           node -e "
             const fs = require('fs');
-            const f = 'apps/mobile/app.json';
+            const f = 'app.json';
             const d = JSON.parse(fs.readFileSync(f, 'utf8'));
             const n = process.env.RUN_NUMBER;
             d.expo.version = '0.1.' + n;

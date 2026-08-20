@@ -15,7 +15,8 @@
     "@eagle/m3u-tuner-plugin": "workspace:*",
     "@eagle/hdhome-run-plugin": "workspace:*",
     "@eagle/headless-ui": "workspace:*",
-    "@eagle/design-tokens": "workspace:*"
+    "@eagle/design-tokens": "workspace:*",
+    "expo-application": "~7.0.8"
   },
   "peerDependencies": {
     "@react-native-async-storage/async-storage": "^2.1.0",
