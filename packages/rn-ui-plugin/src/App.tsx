@@ -12,6 +12,7 @@
 import React, { useEffect, useState } from 'react';
 import { BackHandler, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { ToastProvider } from './Toast.js';
 import * as Application from 'expo-application';
 import { EagleCore } from '@eagle/core';
 import type { Channel, SourcePlugin } from '@eagle/core';
@@ -103,9 +104,10 @@ export function EagleApp(): React.JSX.Element {
   };
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={styles.flex} edges={['top', 'left', 'right', 'bottom']}>
-        <StatusBar barStyle="light-content" />
+    <ToastProvider>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.flex} edges={['top', 'left', 'right', 'bottom']}>
+          <StatusBar barStyle="light-content" />
         {route === 'list' && (
           <ChannelListScreen
             controller={controllers.channelList}
@@ -129,9 +131,10 @@ export function EagleApp(): React.JSX.Element {
             onBack={() => setRoute('list')}
           />
         )}
-        {route !== 'player' && <Text style={styles.versionBadge}>{versionLabel()}</Text>}
-      </SafeAreaView>
-    </SafeAreaProvider>
+          {route !== 'player' && <Text style={styles.versionBadge}>{versionLabel()}</Text>}
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </ToastProvider>
   );
 }
 

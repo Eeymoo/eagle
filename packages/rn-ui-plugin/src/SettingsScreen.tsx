@@ -4,9 +4,10 @@
  * Fields render from plugin.formFields; styling is 100% design tokens.
  */
 import React, { useMemo } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import type { AddSourceFormController, HealthController, SourcesController } from '@eagle/headless-ui';
 import { useAddSourceForm, useHealth, useSources } from '@eagle/headless-ui';
+import { useToast } from './Toast.js';
 import { t } from './theme.js';
 
 export interface SettingsScreenProps {
@@ -20,6 +21,7 @@ export function SettingsScreen({ form, sources, health, onBack }: SettingsScreen
   const formState = useAddSourceForm(form);
   const { sources: configured } = useSources(sources);
   const healthState = useHealth(health);
+  const toast = useToast();
   const plugins = useMemo(() => form.plugins(), [form]);
   const active = formState.kind ?? plugins[0]?.kind ?? '';
 
@@ -33,10 +35,10 @@ export function SettingsScreen({ form, sources, health, onBack }: SettingsScreen
     await form.submit();
     const st = form.getState();
     if (st.status === 'success') {
-      Alert.alert('已添加');
+      toast.show({ message: '已添加，正在体检新频道…', kind: 'success' });
       onBack();
     } else if (st.status === 'error' && st.errorMessage) {
-      Alert.alert('添加失败', st.errorMessage);
+      toast.show({ message: `添加失败：${st.errorMessage}`, kind: 'error', duration: 4000 });
     }
   }
 
@@ -90,7 +92,7 @@ export function SettingsScreen({ form, sources, health, onBack }: SettingsScreen
         style={styles.recheckBtn}
         onPress={() => {
           health.forget();
-          Alert.alert('已重置体检结果', '返回列表刷新后将重新体检全部频道。');
+          toast.show({ message: '体检结果已重置，刷新列表后重新体检', kind: 'info' });
         }}
       >
         <Text style={styles.recheckText}>重置体检结果</Text>
