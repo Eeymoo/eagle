@@ -283,9 +283,9 @@ $ pnpm --filter @eagle/design-tokens build    # 生成 RN 主题 + 38 个 CSS �
 
 覆盖场景：插件注册/未知 kind 拒绝/持久化恢复/未注册插件跳过/多源合并与故障隔离/订阅通知/前缀路由；Jellyfin 登录与频道归一化；M3U 解析容错（无逗号/裸 URL/去重/TTL 缓存）；HDHomeRun 发现/lineup/直连播放/DeviceID 派生 id。
 
-## 5.1 快速打包（apps/mobile Expo 壳）
+## 5.1 快速打包（packages/rn-app Expo 壳）
 
-monorepo Metro 已配好（`apps/mobile/metro.config.js`：workspace watchFolders + pnpm 符号链接 +
+monorepo Metro 已配好（`packages/rn-app/metro.config.js`：workspace watchFolders + pnpm 符号链接 +
 `.js→.ts` 源码桥接；各包 `react-native` 字段直指 TS 源码，**改包无需预构建**）。
 
 | 场景 | 命令 | 耗时 |

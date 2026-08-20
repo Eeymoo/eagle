@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability: core runtime permissions only. Eagle's frontend uses plain HTTP + localStorage, so no extra plugin permissions are needed yet.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

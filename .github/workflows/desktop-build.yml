@@ -1,0 +1,105 @@
+name: Build Desktop Installers
+
+on:
+  push:
+    branches: [release]   # 与 APK 工作流一致：release 快照分支
+    paths:
+      - 'packages/desktop-app/**'
+      - 'packages/tauri-ui-plugin/**'
+      - 'packages/core/**'
+      - 'packages/headless-ui/**'
+      - 'packages/design-tokens/**'
+      - 'packages/jellyfin-plugin/**'
+      - 'packages/m3u-tuner-plugin/**'
+      - 'packages/hdhome-run-plugin/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/desktop-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest      # .dmg (aarch64 + x86_64 通用)
+            args: --target universal-apple-darwin
+          - platform: ubuntu-22.04      # .AppImage / .deb
+            args: ''
+          - platform: windows-latest    # .msi (NSIS 需额外 args)
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        working-directory: packages/desktop-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # version comes from root package.json "packageManager" field
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: packages/desktop-app/src-tauri -> target
+
+      - name: Install Linux system deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: .
+        run: pnpm --filter @eagle/desktop-app typecheck
+
+      # 占位 icon.png → 全套 icns/ico/png（产物随源码提交过一次后可移除）
+      - name: Generate app icons
+        run: pnpm tauri icon src-tauri/icons/icon.png
+
+      - name: Build Tauri bundles
+        run: pnpm tauri build ${{ matrix.args }}
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: eagle-desktop-${{ matrix.platform }}
+          path: |
+            packages/desktop-app/src-tauri/target/release/bundle/**/*.dmg
+            packages/desktop-app/src-tauri/target/release/bundle/**/*.app
+            packages/desktop-app/src-tauri/target/release/bundle/**/*.AppImage
+            packages/desktop-app/src-tauri/target/release/bundle/**/*.deb
+            packages/desktop-app/src-tauri/target/release/bundle/**/*.msi
+            packages/desktop-app/src-tauri/target/release/bundle/**/*.exe
+            packages/desktop-app/src-tauri/target/universal-apple-darwin/release/bundle/**/*.dmg
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "## 📦 Eagle 桌面构建完成（${{ matrix.platform }}）" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 下载: Actions → 本次运行 → Artifacts → eagle-desktop-${{ matrix.platform }}" >> $GITHUB_STEP_SUMMARY

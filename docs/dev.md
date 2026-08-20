@@ -42,7 +42,7 @@ core ──► 业务契约 + 插件注册表（零平台、零具体源）
 - `@eagle/design-tokens` — tokens.ts 单一事实来源；`pnpm --filter @eagle/design-tokens build` 重新生成
 - `@eagle/rn-ui-plugin` — 纯头：屏幕零数据逻辑，样式全走 theme tokens
 - `@eagle/tauri-ui-plugin` — 占位 + 接入契约（见包内 index.ts）
-- `@eagle/mobile`（apps/mobile）— Expo 壳：入口 + metro.config + eas.json，打包见 README §5.1
+- `@eagle/mobile`（packages/rn-app）— Expo 壳：入口 + metro.config + eas.json，打包见 README §5.1
 
 ## 快速打包速查
 
