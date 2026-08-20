@@ -90,9 +90,9 @@ export class M3USource extends LiveSourceBase {
     }
     let text: string;
     try {
-      // 45s: iptv-org/github.io playlists can take 20s+ to arrive on slow
+      // 60s: iptv-org/github.io playlists can take 20s+ to arrive on slow
       // networks (measured 21.8s on a MIUI device); 20s timed out there.
-      text = await this.port.getText(this.playlistUrl, { timeoutMs: 45_000 });
+      text = await this.port.getText(this.playlistUrl, { timeoutMs: 60_000 });
     } catch (e) {
       throw e instanceof CoreError
         ? e
