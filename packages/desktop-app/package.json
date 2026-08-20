@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "@eagle/tauri-ui-plugin": "workspace:*",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0",
