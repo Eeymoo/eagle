@@ -11,6 +11,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { BackHandler, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Application from 'expo-application';
 import { EagleCore } from '@eagle/core';
 import type { Channel, SourcePlugin } from '@eagle/core';
@@ -102,31 +103,33 @@ export function EagleApp(): React.JSX.Element {
   };
 
   return (
-    <View style={styles.flex}>
-      <StatusBar barStyle="light-content" />
-      {route === 'list' && (
-        <ChannelListScreen
-          controller={controllers.channelList}
-          onPlay={play}
-          onOpenSettings={() => setRoute('settings')}
-        />
-      )}
-      {route === 'player' && current && (
-        <PlayerScreen
-          controller={controllers.player}
-          channel={current}
-          onBack={() => setRoute('list')}
-        />
-      )}
-      {route === 'settings' && (
-        <SettingsScreen
-          form={controllers.addSourceForm}
-          sources={controllers.sources}
-          onBack={() => setRoute('list')}
-        />
-      )}
-      <Text style={styles.versionBadge}>{versionLabel()}</Text>
-    </View>
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.flex} edges={['top', 'left', 'right', 'bottom']}>
+        <StatusBar barStyle="light-content" />
+        {route === 'list' && (
+          <ChannelListScreen
+            controller={controllers.channelList}
+            onPlay={play}
+            onOpenSettings={() => setRoute('settings')}
+          />
+        )}
+        {route === 'player' && current && (
+          <PlayerScreen
+            controller={controllers.player}
+            channel={current}
+            onBack={() => setRoute('list')}
+          />
+        )}
+        {route === 'settings' && (
+          <SettingsScreen
+            form={controllers.addSourceForm}
+            sources={controllers.sources}
+            onBack={() => setRoute('list')}
+          />
+        )}
+        {route !== 'player' && <Text style={styles.versionBadge}>{versionLabel()}</Text>}
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

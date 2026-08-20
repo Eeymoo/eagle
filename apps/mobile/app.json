@@ -22,7 +22,14 @@
         ]
       }
     },
-    "plugins": [],
+    "plugins": [
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "DEFAULT"
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "37657185-ab59-47c0-83e5-11f4f54cc046"
