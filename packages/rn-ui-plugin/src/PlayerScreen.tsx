@@ -23,6 +23,7 @@ const Video = RawVideo as unknown as React.ComponentType<{
   style?: object;
   resizeMode?: string;
   paused?: boolean;
+  controls?: boolean;
   ignoreSilentSwitch?: string;
   onLoad?: () => void;
   onError?: (e: unknown) => void;
@@ -100,6 +101,7 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
             style={styles.video}
             resizeMode="contain"
             paused={ui.paused}
+            controls={false}
             ignoreSilentSwitch="ignore"
             onLoad={() => controller.onMediaPlaying()}
             onError={(e) => controller.onMediaError(describeVideoError(e))}
