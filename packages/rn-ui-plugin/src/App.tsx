@@ -10,7 +10,7 @@
  * tokens; this file is pure wiring — which is exactly what a "head" should be.
  */
 import React, { useEffect, useState } from 'react';
-import { Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
 import * as Application from 'expo-application';
 import { EagleCore } from '@eagle/core';
 import type { Channel, SourcePlugin } from '@eagle/core';
@@ -67,6 +67,19 @@ export function EagleApp(): React.JSX.Element {
 
   const [route, setRoute] = useState<Route>('list');
   const [current, setCurrent] = useState<Channel | null>(null);
+
+  // Android hardware back / gesture: pop player→settings→list, exit from list.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (route === 'player' || route === 'settings') {
+        setRoute('list');
+        if (route === 'player') setCurrent(null);
+        return true; // handled, don't exit the app
+      }
+      return false; // on list → default behavior (exit/background)
+    });
+    return () => sub.remove();
+  }, [route]);
 
   if (bootError) {
     return (
