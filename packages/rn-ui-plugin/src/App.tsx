@@ -104,8 +104,8 @@ export function EagleApp(): React.JSX.Element {
   };
 
   return (
-    <ToastProvider>
-      <SafeAreaProvider>
+    <SafeAreaProvider>
+      <ToastProvider>
         <SafeAreaView style={styles.flex} edges={['top', 'left', 'right', 'bottom']}>
           <StatusBar barStyle="light-content" />
         {route === 'list' && (
@@ -134,8 +134,8 @@ export function EagleApp(): React.JSX.Element {
         )}
           {route !== 'player' && <Text style={styles.versionBadge}>{versionLabel()}</Text>}
         </SafeAreaView>
-      </SafeAreaProvider>
-    </ToastProvider>
+      </ToastProvider>
+    </SafeAreaProvider>
   );
 }
 
