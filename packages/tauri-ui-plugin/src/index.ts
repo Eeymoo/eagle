@@ -1,20 +1,17 @@
 /**
- * Eagle Tauri UI plugin — RESERVED, not implemented in MVP.
- *
- * Extension contract (mirrors rn-ui-plugin, but as a pure head over the
- * shared headless layer + design tokens):
- *
- *   1. platform.ts : TauriPort implements core's Port over tauri-plugin-http;
- *                    SettingsStore over tauri-plugin-store.
- *   2. controllers : reuse @eagle/headless-ui's createEagleControllers(core)
- *                    verbatim — controllers are renderer-agnostic.
- *   3. tokens      : import '@eagle/design-tokens/css' (dist/tokens.css) for
- *                    the exact same 38 CSS custom properties RN consumes
- *                    natively; design consistency by construction.
- *   4. screens     : same three screens; <Video> → HTML5 <video> + hls.js;
- *                    react-navigation-free routing via react-router.
- *
- * Nothing else changes: business logic in @eagle/core, behavior state
- * machines in @eagle/headless-ui, tokens in @eagle/design-tokens.
+ * Public surface of @eagle/tauri-ui-plugin — the web/Tauri pure head over
+ * the shared headless layer + design tokens. Mirrors rn-ui-plugin's surface:
+ * same three screens, same controllers, different rendering elements
+ * (<video> + hls.js instead of react-native-video).
  */
-export const TAURI_PLUGIN_RESERVED = true;
+import './tokens.js';
+import './styles.css';
+
+export { EagleTauriApp, MVP_PLUGINS } from './App.js';
+export { TauriPort, createSettingsStore, fnv1a } from './platform.js';
+export { ChannelListScreen } from './ChannelListScreen.js';
+export type { ChannelListScreenProps } from './ChannelListScreen.js';
+export { SettingsScreen } from './SettingsScreen.js';
+export type { SettingsScreenProps } from './SettingsScreen.js';
+export { PlayerScreen } from './PlayerScreen.js';
+export type { PlayerScreenProps } from './PlayerScreen.js';

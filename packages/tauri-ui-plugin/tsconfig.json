@@ -5,7 +5,11 @@
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM"]
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }
