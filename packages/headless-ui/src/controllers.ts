@@ -8,6 +8,7 @@ import { AddSourceFormController } from './add-source-form.js';
 import { PlayerController } from './player.js';
 import { SourcesController } from './sources.js';
 import { HealthController } from './health.js';
+import { PlayerControlsController } from './player-controls.js';
 import type { EagleCore } from '@eagle/core';
 
 export interface EagleControllers {
@@ -16,6 +17,7 @@ export interface EagleControllers {
   sources: SourcesController;
   player: PlayerController;
   health: HealthController;
+  playerControls: PlayerControlsController;
 }
 
 export function createEagleControllers(core: EagleCore): EagleControllers {
@@ -35,6 +37,7 @@ export function createEagleControllers(core: EagleCore): EagleControllers {
     subscribe: (l) => core.subscribe(l),
   });
   const player = new PlayerController({ resolve: (id) => core.resolveStream(id) });
+  const playerControls = new PlayerControlsController({ hideDelayMs: 3000 });
   const health = new HealthController({
     port: {
       // Health checks only need `now` from the port; reuse core's fetch via
@@ -80,5 +83,5 @@ export function createEagleControllers(core: EagleCore): EagleControllers {
     if (st.status === 'playing') health.markOk(st.channel.id);
   });
 
-  return { channelList, addSourceForm, sources, player, health };
+  return { channelList, addSourceForm, sources, player, health, playerControls };
 }

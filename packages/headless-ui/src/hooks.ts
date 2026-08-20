@@ -13,6 +13,8 @@ import type { PlayerState } from './player.js';
 import { SourcesController } from './sources.js';
 import { HealthController } from './health.js';
 import type { HealthState } from './health.js';
+import { PlayerControlsController } from './player-controls.js';
+import type { PlayerControlsState } from './player-controls.js';
 
 /** Subscribe to a controller's state with a stable snapshot. */
 export function useChannelList(controller: ChannelListController): ChannelListState {
@@ -48,6 +50,14 @@ export function useSources(controller: SourcesController): { sources: import('@e
 }
 
 export function useHealth(controller: HealthController): HealthState {
+  return useSyncExternalStore(
+    controller.subscribe,
+    controller.getState,
+    controller.getState,
+  );
+}
+
+export function usePlayerControls(controller: PlayerControlsController): PlayerControlsState {
   return useSyncExternalStore(
     controller.subscribe,
     controller.getState,

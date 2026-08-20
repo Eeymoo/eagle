@@ -119,6 +119,7 @@ export function EagleApp(): React.JSX.Element {
         {route === 'player' && current && (
           <PlayerScreen
             controller={controllers.player}
+            controls={controllers.playerControls}
             channel={current}
             onBack={() => setRoute('list')}
           />
