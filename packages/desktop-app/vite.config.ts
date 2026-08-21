@@ -105,7 +105,10 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // LAN dev by default; tunnel hosts (*.port.dsh.onemue.cn) allowed via
+    // dot-prefix (matches the whole subtree).
+    host: host || true,
+    allowedHosts: ['.port.dsh.onemue.cn'],
     hmr: host
       ? { protocol: 'ws', host, port: 1421 }
       : undefined,
