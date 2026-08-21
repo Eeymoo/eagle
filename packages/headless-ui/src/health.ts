@@ -18,6 +18,12 @@ export interface HealthControllerDeps {
   port: Port;
   /** Resolve a channel's playable stream URL (usually core.resolveStream). */
   resolveStream: (channelId: string) => Promise<StreamUrl>;
+  /**
+   * Optional URL rewrite applied before each probe fetch — lets web heads
+   * route through a CORS proxy (plain-browser dev) without leaking that
+   * concern into this renderer-agnostic layer.
+   */
+  mapUrl?: (url: string) => string;
   settings: {
     get<T>(key: string, fallback: T): Promise<T>;
     set(key: string, value: unknown): Promise<void>;
@@ -147,6 +153,7 @@ export class HealthController {
     this.set({ statuses, inflight: todo.length });
 
     let newlyBad = 0;
+    let remaining = todo.length;
     let index = 0;
     const worker = async (): Promise<void> => {
       while (index < todo.length) {
@@ -164,7 +171,10 @@ export class HealthController {
             statuses[channel.id] = 'unknown';
           }
         }
-        this.set({ statuses: { ...statuses }, failures: { ...failures } });
+        remaining--;
+        // Live progress: emit the decremented inflight with each result so
+        // "剩余 N 个频道" ticks down as probes complete.
+        this.set({ statuses: { ...statuses }, failures: { ...failures }, inflight: remaining });
       }
     };
     const workers = Array.from({ length: Math.min(CONCURRENCY, todo.length) }, () => worker());
@@ -194,7 +204,7 @@ export class HealthController {
         const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
         let res: Response;
         try {
-          res = await fetch(url, {
+          res = await fetch(this.deps.mapUrl?.(url) ?? url, {
             method,
             signal: ac.signal,
             headers: method === 'GET' ? { Range: 'bytes=0-1024' } : undefined,

@@ -20,7 +20,18 @@ export interface EagleControllers {
   playerControls: PlayerControlsController;
 }
 
-export function createEagleControllers(core: EagleCore): EagleControllers {
+export interface CreateEagleControllersOptions {
+  /**
+   * Optional URL rewrite for health probes (e.g. web CORS proxy).
+   * Passed through to HealthController.
+   */
+  mapProbeUrl?: (url: string) => string;
+}
+
+export function createEagleControllers(
+  core: EagleCore,
+  opts: CreateEagleControllersOptions = {},
+): EagleControllers {
   const channelList = new ChannelListController({ load: () => core.listChannels() });
   const addSourceForm = new AddSourceFormController({
     plugins: core.listPlugins(),
@@ -56,6 +67,7 @@ export function createEagleControllers(core: EagleCore): EagleControllers {
       },
     },
     resolveStream: (id) => core.resolveStream(id),
+    mapUrl: opts.mapProbeUrl,
     settings: {
       get: async <T,>(key: string, fallback: T) =>
         ((await core.settingsStore.get<T>(key)) ?? fallback),

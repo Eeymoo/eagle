@@ -18,7 +18,7 @@ import { hdHomeRunPlugin } from '@eagle/hdhome-run-plugin';
 import { createEagleControllers } from '@eagle/headless-ui';
 import type { EagleControllers } from '@eagle/headless-ui';
 import { ChannelListScreen, PlayerScreen, SettingsScreen, ToastProvider } from '@eagle/ui-screens';
-import { TauriPort, createSettingsStore } from './platform.js';
+import { TauriPort, createSettingsStore, eagleUrl } from './platform.js';
 import './app.css';
 
 /** Source-plugin composition for the MVP build (same set as the RN head). */
@@ -36,7 +36,7 @@ export function EagleDesktopApp(): React.JSX.Element {
         const core = new EagleCore(new TauriPort(), createSettingsStore());
         for (const p of MVP_PLUGINS) core.use(p);
         await core.hydrate();
-        setControllers(createEagleControllers(core));
+        setControllers(createEagleControllers(core, { mapProbeUrl: eagleUrl }));
       } catch (e) {
         setBootError(e instanceof Error ? e.message : String(e));
       }
