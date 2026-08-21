@@ -35,13 +35,15 @@ export function ChannelListScreen({ controller, health, onPlay, onOpenSettings }
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <TextInput
-          style={styles.search}
-          placeholder="搜索频道"
-          placeholderTextColor={t.colors.textDisabled}
-          value={state.query}
-          onChangeText={(q) => controller.setQuery(q)}
-        />
+        <View style={styles.searchWrap}>
+          <TextInput
+            style={styles.search}
+            placeholder="搜索频道"
+            placeholderTextColor={t.colors.textDisabled}
+            value={state.query}
+            onChangeText={(q) => controller.setQuery(q)}
+          />
+        </View>
         <Pressable onPress={onOpenSettings} style={styles.gear}>
           <Text style={styles.gearText}>⚙︎</Text>
         </Pressable>
@@ -107,6 +109,12 @@ const isWeb = Platform.OS === 'web';
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: t.colors.bgCanvas },
   header: { flexDirection: 'row', alignItems: 'center', padding: t.spacing.md, gap: t.spacing.sm },
+  searchWrap: {
+    // Takes the header row minus the gear; centers the fixed-width search
+    // on web. Native: wrapper fills and the input fills it.
+    flex: 1,
+    alignItems: isWeb ? 'center' : 'stretch',
+  },
   search: {
     // Web: fixed 460px (RN's flex:0 expands to flex-basis:0% in RNW and
     // collapses the box). Native: fill the header row.
