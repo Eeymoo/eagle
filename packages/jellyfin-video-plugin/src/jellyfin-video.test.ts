@@ -84,6 +84,39 @@ describe('jellyfin-video', () => {
     });
     expect(source.kind).toBe('jellyfin-video');
   });
+
+  it('prefers static direct streaming for web-playable containers', async () => {
+    const port = new MemoryPort().stubJson(
+      'http://jf.local/Users/u1/Items?IncludeItemTypes=Movie%2CEpisode&Recursive=true&SortBy=SortName&SortOrder=Ascending&StartIndex=0&Limit=500&EnableImages=true&ImageTypeLimit=1',
+      {
+        Items: [{ Id: 'mp4item', Name: 'Mp4 Movie', Type: 'Movie', Container: 'mov,mp4,m4a,3gp,3g2,mj2' }],
+        TotalRecordCount: 1,
+      },
+    );
+    const source = new JellyfinVideoSource(port, SESSION);
+    await source.listChannels();
+    const stream = await source.resolveStream('jfv:mp4item');
+    expect(stream.kind).toBe('jellyfin-http');
+    expect(stream.url).toBe('http://jf.local/videos/mp4item/stream.mp4?static=true&api_key=tok123');
+    expect(stream.headers).toBeUndefined(); // native <video>, api_key auth
+  });
+
+  it('falls back to transcoded HLS for non-web containers', async () => {
+    const port = new MemoryPort().stubJson(
+      'http://jf.local/Users/u1/Items?IncludeItemTypes=Movie%2CEpisode&Recursive=true&SortBy=SortName&SortOrder=Ascending&StartIndex=0&Limit=500&EnableImages=true&ImageTypeLimit=1',
+      {
+        Items: [{ Id: 'mkvitem', Name: 'Mkv Movie', Type: 'Movie', Container: 'mkv' }],
+        TotalRecordCount: 1,
+      },
+    ).stubPost('http://jf.local/Items/mkvitem/PlaybackInfo', {
+      MediaSources: [{ Id: 'ms9' }],
+    });
+    const source = new JellyfinVideoSource(port, SESSION);
+    await source.listChannels();
+    const stream = await source.resolveStream('jfv:mkvitem');
+    expect(stream.kind).toBe('jellyfin-hls');
+    expect(stream.url).toContain('master.m3u8');
+  });
 });
 
 describe('jellyfin-video re-login', () => {

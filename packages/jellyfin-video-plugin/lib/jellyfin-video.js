@@ -10,6 +10,9 @@
 import { LiveSourceBase } from '@eagle/core';
 import { CoreError } from '@eagle/core';
 import { authenticate, joinUrl, withParams } from '@eagle/jellyfin-plugin';
+/** Containers a browser <video> can play directly (static streaming), in
+ *  preference order — mp4 is universally the safest choice. */
+const CONTAINER_PREFERENCE = ['mp4', 'm4v', 'webm', 'mov'];
 /** Movies + episodes; cap so pathological libraries don't stall the list. */
 const INCLUDE_TYPES = 'Movie,Episode';
 const PAGE_SIZE = 500;
@@ -123,7 +126,28 @@ export class JellyfinVideoSource extends LiveSourceBase {
         const bare = channelId.replace(/^jfv:/, '');
         if (!bare)
             throw new CoreError('NOT_FOUND', `Jellyfin 媒体库: bad id "${channelId}"`);
-        // Same path as live: PlaybackInfo for MediaSourceId, then master.m3u8.
+        // Direct file streaming (static): zero server transcoding, HTTP Range
+        // support, native <video> playback with seek. api_key query auth WORKS
+        // on this endpoint (unlike master.m3u8), so no header injection needed.
+        // Falls back to transcoded HLS only for containers the web can't play.
+        // "mov,mp4,…" → pick the best web-playable container (mp4 > m4v > webm >
+        // mov; list order is arbitrary), else "" = transcode fallback.
+        const raw = (this.byId.get(bare)?.Container ?? '')
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean);
+        const container = CONTAINER_PREFERENCE.find((c) => raw.includes(c)) ?? '';
+        if (container) {
+            return {
+                url: withParams(joinUrl(this.session.serverUrl, `videos/${bare}/stream.${container}`), {
+                    static: 'true',
+                    api_key: this.session.accessToken,
+                }),
+                kind: 'jellyfin-http',
+                containerHint: container,
+            };
+        }
+        // Transcode path (mkv/avi/…): PlaybackInfo → master.m3u8 + auth header.
         let mediaSourceId;
         try {
             const postJson = this.port.postJson?.bind(this.port);

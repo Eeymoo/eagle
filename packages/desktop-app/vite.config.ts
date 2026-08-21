@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
+import { Readable } from 'node:stream';
 
 const pkgs = (name: string): string =>
   resolve(import.meta.dirname, '..', name, 'src', 'index.ts');
@@ -72,12 +73,27 @@ function eagleProxy(): Plugin {
             });
             const cache = upstream.headers.get('cache-control');
             res.statusCode = upstream.status;
-            const ct = upstream.headers.get('content-type');
-            if (ct) res.setHeader('Content-Type', ct);
-            if (cache) res.setHeader('Cache-Control', cache);
+            // Forward media-critical response headers: Content-Range /
+            // Accept-Ranges are REQUIRED for <video> seeking and 206 handling.
+            for (const h of [
+              'content-type',
+              'content-length',
+              'content-range',
+              'accept-ranges',
+              'cache-control',
+              'etag',
+              'last-modified',
+            ]) {
+              const v = upstream.headers.get(h);
+              if (v) res.setHeader(h, v);
+            }
             res.setHeader('Access-Control-Allow-Origin', '*');
-            const buf = Buffer.from(await upstream.arrayBuffer());
-            res.end(buf);
+            if (!upstream.body) {
+              res.end();
+              return;
+            }
+            // Stream through — never buffer (files can be gigabytes).
+            Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream).pipe(res);
           } catch (e) {
             const cause = e instanceof Error && 'cause' in e ? ` (${String((e as { cause?: unknown }).cause)})` : '';
             console.error(`[eagle-proxy] ${target} failed:`, e instanceof Error ? e.message : e, cause);
