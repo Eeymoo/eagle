@@ -144,6 +144,7 @@ export class JellyfinVideoSource extends LiveSourceBase {
           })
         : undefined,
       group: item.SeriesName ?? (isEpisode ? undefined : '电影'),
+      isVod: true, // on-demand: seekable, has duration, no LIVE semantics
     };
   }
 

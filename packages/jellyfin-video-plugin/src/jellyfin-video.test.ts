@@ -38,6 +38,7 @@ describe('jellyfin-video', () => {
     expect(channels.map((c) => c.id)).toEqual(['jfv:m0', 'jfv:m1']);
     expect(channels[0]?.name).toBe('Movie 0 (2020)');
     expect(channels[0]?.group).toBe('电影');
+    expect(channels[0]?.isVod).toBe(true); // VOD: seek bar, no LIVE badge
     expect(channels[0]?.logoUrl).toContain('Items/m0/Images/Primary');
     expect(channels.every((c) => c.source === 'jellyfin-video')).toBe(true);
   });

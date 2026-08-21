@@ -128,6 +128,17 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
     if (!ui.paused && video.paused) video.play().catch(() => undefined);
   }, [ui.paused, url]);
 
+  // VOD progress (currentTime/duration) drives the seek bar.
+  const [progress, setProgress] = React.useState({ t: 0, dur: 0 });
+  const isVod = channel.isVod === true;
+  const fmt = (s: number): string => {
+    if (!Number.isFinite(s)) return '--:--';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    const h = Math.floor(m / 60);
+    return h > 0 ? `${h}:${String(m % 60).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+  };
+
   const playing = state.status === 'playing';
 
   return (
@@ -141,7 +152,9 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
       {state.status === 'error' && (
         <div className="error-box">
           <div className="error-main">播放失败{state.errorMessage ? `\n${state.errorMessage}` : ''}</div>
-          <div className="error-hint">直播源地址可能失效或网络不可达，可尝试重试或换一个频道。</div>
+          <div className="error-hint">{isVod
+            ? '媒体文件可能无法直接播放（编码不兼容）或网络不可达，可尝试重试。'
+            : '直播源地址可能失效或网络不可达，可尝试重试或换一个频道。'}</div>
           <button className="recheck-btn" onClick={() => { void controller.open(channel); setReloadKey(); }}>
             重试
           </button>
@@ -156,6 +169,15 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
           onPlaying={() => controller.onMediaPlaying()}
           onPause={() => controller.onMediaPaused()}
           onWaiting={() => controller.onMediaLoading()}
+          onTimeUpdate={() => {
+            // currentTarget is nulled after async dispatch — use the ref.
+            const v = videoRef.current;
+            if (v) setProgress({ t: v.currentTime, dur: v.duration || 0 });
+          }}
+          onLoadedMetadata={() => {
+            const v = videoRef.current;
+            if (v) setProgress((p) => ({ ...p, dur: v.duration || 0 }));
+          }}
           onError={() => controller.onMediaError(describeVideoError(videoRef.current?.error))}
         />
       )}
@@ -167,11 +189,30 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
               ‹ 返回
             </button>
             <span className="player-title">{channel.name}</span>
-            {playing && <span className="live">LIVE</span>}
+            {playing && !isVod && <span className="live">LIVE</span>}
           </div>
           <button className="center-btn" onClick={() => controls.togglePlayPause()}>
             {ui.paused ? '▶' : '❚❚'}
           </button>
+          {isVod && (
+            <div className="vod-bar">
+              <span className="vod-time">{fmt(progress.t)}</span>
+              <input
+                type="range"
+                className="vod-seek"
+                min={0}
+                max={progress.dur || 0}
+                step={1}
+                value={Math.min(progress.t, progress.dur || 0)}
+                onChange={(e) => {
+                  const video = videoRef.current;
+                  const t = Number(e.target.value);
+                  if (video && Number.isFinite(t)) video.currentTime = t;
+                }}
+              />
+              <span className="vod-time">{fmt(progress.dur)}</span>
+            </div>
+          )}
         </>
       )}
     </div>

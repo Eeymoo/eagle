@@ -33,6 +33,11 @@ export interface Channel {
     number?: string;
     /** Optional grouping (Jellyfin collection / M3U group-title). */
     group?: string;
+    /**
+     * True for on-demand items (media-library movies/episodes): players show
+     * a seek bar + duration and drop LIVE semantics. Live sources omit it.
+     */
+    isVod?: boolean;
 }
 export type SourceKind = 'jellyfin' | 'jellyfin-video' | 'm3u' | 'hdhomerun';
 /** Identifies one configured live-TV source instance. */
