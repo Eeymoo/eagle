@@ -14,9 +14,9 @@
  *   /settings        source management
  *   /player/:channelId  fullscreen player (chrome-less)
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
-import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, RouterProvider, createBrowserRouter, useNavigate, useParams } from 'react-router-dom';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { EagleCore } from '@eagle/core';
 import type { Channel, SourcePlugin } from '@eagle/core';
@@ -72,22 +72,29 @@ export function EagleDesktopApp(): React.JSX.Element {
 
   return (
     <SafeAreaProvider>
-      <BrowserRouter>
-        <AppRoutes controllers={controllers} />
-      </BrowserRouter>
+      <AppRouter controllers={controllers} />
     </SafeAreaProvider>
   );
 }
 
-function AppRoutes({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
-  return (
-    <Routes>
-      <Route path="/" element={<ListRoute controllers={controllers} />} />
-      <Route path="/settings" element={<SettingsRoute controllers={controllers} />} />
-      <Route path="/player/:channelId" element={<PlayerRoute controllers={controllers} />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+/**
+ * Data router (createBrowserRouter) instead of <BrowserRouter>: under
+ * React 19.1 the declarative router's history subscription stopped
+ * re-rendering on navigate() — URL changed, view didn't. The data router
+ * is react-router 7's primary API and updates reliably.
+ */
+function AppRouter({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const router = useMemo(
+    () =>
+      createBrowserRouter([
+        { path: '/', element: <ListRoute controllers={controllers} /> },
+        { path: '/settings', element: <SettingsRoute controllers={controllers} /> },
+        { path: '/player/:channelId', element: <PlayerRoute controllers={controllers} /> },
+        { path: '*', element: <Navigate to="/" replace /> },
+      ]),
+    [controllers],
   );
+  return <RouterProvider router={router} />;
 }
 
 /** Channel list inside the desktop shell (app bar + centered column). */
@@ -152,15 +159,19 @@ function PlayerRoute({ controllers }: { controllers: EagleControllers }): React.
   const id = decodeURIComponent(channelId);
   const channel: Channel | undefined = list.channels.find((c) => c.id === id);
 
-  // Not found once loaded → back to list (bad bookmark / removed source).
+  // Not found once loaded, OR the list failed (bad network / dead token
+  // even after re-login) → back to list where the error is visible — never
+  // hang forever on 加载中.
   useEffect(() => {
-    if (list.status === 'ready' && !channel) navigate('/', { replace: true });
+    if ((list.status === 'ready' || list.status === 'error') && !channel) navigate('/', { replace: true });
   }, [list.status, channel, navigate]);
 
   if (!channel) {
     return (
       <View style={styles.playerRoot}>
-        <Text style={styles.hint}>频道加载中…</Text>
+        <Text style={styles.hint}>
+          {list.status === 'error' ? `频道列表加载失败：${list.errorMessage ?? ''}` : '频道加载中…'}
+        </Text>
       </View>
     );
   }

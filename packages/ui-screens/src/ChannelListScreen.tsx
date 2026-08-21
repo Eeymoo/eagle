@@ -3,7 +3,7 @@
  * styles from design tokens. No data fetching, no filtering logic here —
  * those live in @eagle/headless-ui.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { FlatList, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { Channel } from '@eagle/core';
 import type { ChannelListController, HealthController } from '@eagle/headless-ui';
@@ -30,7 +30,18 @@ export function ChannelListScreen({ controller, health, onPlay, onOpenSettings }
     });
   }, [controller, health]);
 
-  const visible = health.filter(controller.visibleChannels());
+  // Memoized: re-filtering 8k channels on EVERY render (health ticks, player
+  // state) produced a fresh array each time → FlatList full reconcile each
+  // tick → React concurrent commit wedge (Maximum update depth). Only
+  // recompute when the underlying state versions actually change.
+  const visible = useMemo(
+    () => health.filter(controller.visibleChannels()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [controller, health, state.version, healthState.version, healthState.hideBad],
+  );
+  // Cap what the virtualizer manages — huge libraries stay scrollable but
+  // bounded; searching narrows precisely.
+  const shown = visible.length > 500 ? visible.slice(0, 500) : visible;
 
   return (
     <View style={styles.root}>
@@ -59,6 +70,9 @@ export function ChannelListScreen({ controller, health, onPlay, onOpenSettings }
           </Text>
         </Text>
       )}
+      {visible.length > shown.length && (
+        <Text style={styles.hint}>已显示前 {shown.length} 条（共 {visible.length} 条），用搜索定位其余频道。</Text>
+      )}
       {state.status === 'ready' && visible.length === 0 && (
         <Text style={styles.hint}>
           {healthState.hideBad
@@ -73,8 +87,14 @@ export function ChannelListScreen({ controller, health, onPlay, onOpenSettings }
       )}
 
       <FlatList
-        data={visible}
+        data={shown}
         keyExtractor={(item) => item.id}
+        // Big libraries (8k+ VOD items) + RNW's default virtualizer settings
+        // wedge React's concurrent commit loop (Maximum update depth on any
+        // navigation). Tight render window keeps it stable.
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        windowSize={5}
         renderItem={({ item }) => (
           <Pressable style={styles.row} onPress={() => onPlay(item)}>
             {item.logoUrl ? (
