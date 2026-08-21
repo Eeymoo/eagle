@@ -1,0 +1,150 @@
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.withSentryMiddleware = exports.createSentryMetroMiddleware = exports.createStackFramesContextMiddleware = void 0;
+const core_1 = require("@sentry/core");
+const fs_1 = require("fs");
+const path = require("path");
+const util_1 = require("util");
+const constants_1 = require("../metro/constants");
+const getRawBody_1 = require("../metro/getRawBody");
+const openUrlMiddleware_1 = require("../metro/openUrlMiddleware");
+const readFileAsync = (0, util_1.promisify)(fs_1.readFile);
+const realpathAsync = (0, util_1.promisify)(fs_1.realpath);
+/**
+ * Accepts Sentry formatted stack frames and
+ * adds source context to the in app frames.
+ *
+ * Relative filenames are resolved against the first entry in `allowedRoots`.
+ * Both the resolved filename and the allowed roots are canonicalized via
+ * `fs.realpath`, so a symlink inside an allowed root pointing outside of it
+ * cannot escape the containment check.
+ */
+const createStackFramesContextMiddleware = (allowedRoots) => {
+    const canonicalRoots = allowedRoots.map(root => {
+        const resolved = path.resolve(root);
+        try {
+            return (0, fs_1.realpathSync)(resolved);
+        }
+        catch (_a) {
+            return resolved;
+        }
+    });
+    return (request, response, _next) => __awaiter(void 0, void 0, void 0, function* () {
+        core_1.debug.log('[@sentry/react-native/metro] Received request for stack frames context.');
+        request.setEncoding('utf8');
+        const rawBody = yield (0, getRawBody_1.getRawBody)(request);
+        let body = {};
+        try {
+            body = JSON.parse(rawBody);
+        }
+        catch (e) {
+            core_1.debug.log('[@sentry/react-native/metro] Could not parse request body.', e);
+            badRequest(response, 'Invalid request body. Expected a JSON object.');
+            return;
+        }
+        const stack = body.stack;
+        if (!Array.isArray(stack)) {
+            core_1.debug.log('[@sentry/react-native/metro] Invalid stack frames.', stack);
+            badRequest(response, 'Invalid stack frames. Expected an array.');
+            return;
+        }
+        const stackWithSourceContext = yield Promise.all(stack.map(frame => addSourceContext(frame, canonicalRoots)));
+        response.setHeader('Content-Type', 'application/json');
+        response.statusCode = 200;
+        response.end(JSON.stringify({ stack: stackWithSourceContext }));
+        core_1.debug.log('[@sentry/react-native/metro] Sent stack frames context.');
+    });
+};
+exports.createStackFramesContextMiddleware = createStackFramesContextMiddleware;
+function addSourceContext(frame, canonicalRoots) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!frame.in_app) {
+            return frame;
+        }
+        try {
+            if (typeof frame.filename !== 'string') {
+                core_1.debug.warn('[@sentry/react-native/metro] Could not read source context for frame without filename.');
+                return frame;
+            }
+            if (canonicalRoots.length === 0) {
+                core_1.debug.warn('[@sentry/react-native/metro] Skipping frame: no allowed roots configured.');
+                return frame;
+            }
+            const resolvedPath = path.resolve(canonicalRoots[0], frame.filename);
+            let canonicalPath;
+            try {
+                canonicalPath = yield realpathAsync(resolvedPath);
+            }
+            catch (_a) {
+                core_1.debug.warn('[@sentry/react-native/metro] Skipping frame: could not canonicalize filename.');
+                return frame;
+            }
+            const isInside = canonicalRoots.some(root => {
+                const relative = path.relative(root, canonicalPath);
+                return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+            });
+            if (!isInside) {
+                core_1.debug.warn('[@sentry/react-native/metro] Skipping frame whose filename is outside the allowed roots.');
+                return frame;
+            }
+            const source = yield readFileAsync(canonicalPath, { encoding: 'utf8' });
+            const lines = source.split('\n');
+            (0, core_1.addContextToFrame)(lines, frame);
+        }
+        catch (error) {
+            core_1.debug.warn('[@sentry/react-native/metro] Could not read source context for frame.', error);
+        }
+        return frame;
+    });
+}
+function badRequest(response, message) {
+    response.statusCode = 400;
+    response.end(message);
+}
+/**
+ * Creates a middleware that adds source context to the Sentry formatted stack frames.
+ */
+const createSentryMetroMiddleware = (middleware, allowedRoots) => {
+    const stackFramesContextMiddleware = (0, exports.createStackFramesContextMiddleware)(allowedRoots);
+    return (request, response, next) => {
+        var _a, _b;
+        if ((_a = request.url) === null || _a === void 0 ? void 0 : _a.startsWith(`/${constants_1.SENTRY_CONTEXT_REQUEST_PATH}`)) {
+            return stackFramesContextMiddleware(request, response, next);
+        }
+        else if ((_b = request.url) === null || _b === void 0 ? void 0 : _b.startsWith(`/${constants_1.SENTRY_OPEN_URL_REQUEST_PATH}`)) {
+            return (0, openUrlMiddleware_1.openURLMiddleware)(request, response);
+        }
+        return middleware(request, response, next);
+    };
+};
+exports.createSentryMetroMiddleware = createSentryMetroMiddleware;
+/**
+ * Adds the Sentry middleware to the Metro server config.
+ */
+const withSentryMiddleware = (config) => {
+    if (!config.server) {
+        // @ts-expect-error server is typed read only
+        config.server = {};
+    }
+    const projectRoot = config.projectRoot || process.cwd();
+    const watchFolders = config.watchFolders || [];
+    const allowedRoots = [projectRoot, ...watchFolders];
+    const originalEnhanceMiddleware = config.server.enhanceMiddleware;
+    // @ts-expect-error enhanceMiddleware is typed read only in metro 0.84+
+    config.server.enhanceMiddleware = (middleware, server) => {
+        const sentryMiddleware = (0, exports.createSentryMetroMiddleware)(middleware, allowedRoots);
+        return originalEnhanceMiddleware ? originalEnhanceMiddleware(sentryMiddleware, server) : sentryMiddleware;
+    };
+    return config;
+};
+exports.withSentryMiddleware = withSentryMiddleware;
+//# sourceMappingURL=metroMiddleware.js.map

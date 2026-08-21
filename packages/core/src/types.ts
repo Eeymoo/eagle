@@ -37,7 +37,7 @@ export interface Channel {
   group?: string;
 }
 
-export type SourceKind = 'jellyfin' | 'm3u' | 'hdhomerun';
+export type SourceKind = 'jellyfin' | 'jellyfin-video' | 'm3u' | 'hdhomerun';
 
 /** Identifies one configured live-TV source instance. */
 export interface SourceRef {

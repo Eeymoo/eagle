@@ -33,7 +33,9 @@ const isPlainBrowserDev: boolean =
 
 export function eagleUrl(url: string): string {
   if (!isPlainBrowserDev || !/^https?:\/\//i.test(url)) return url;
-  return `/eagle-proxy/${encodeURIComponent(url)}`;
+  // Raw URL keeps the origin in the path (see PlayerScreen.web.tsx) so
+  // relative resolution inside HLS playlists survives proxying.
+  return `/eagle-proxy/${url}`;
 }
 
 /** Port over the WebView's global fetch (tauri-plugin-http when enabled). */

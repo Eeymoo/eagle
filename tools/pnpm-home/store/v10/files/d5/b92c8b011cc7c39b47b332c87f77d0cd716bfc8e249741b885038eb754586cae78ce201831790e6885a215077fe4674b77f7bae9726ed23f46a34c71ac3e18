@@ -1,0 +1,710 @@
+import { addBreadcrumb, debug, getClient, isPlainObject, SEMANTIC_ATTRIBUTE_SENTRY_OP, SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SPAN_STATUS_OK, spanToJSON, startInactiveSpan, timestampInSeconds, } from '@sentry/core';
+import { getAppRegistryIntegration } from '../integrations/appRegistry';
+import { sanitizeDeepLinkUrl } from '../integrations/deeplink';
+import { isSentrySpan } from '../utils/span';
+import { RN_GLOBAL_OBJ } from '../utils/worldwide';
+import { NATIVE } from '../wrapper';
+import { ignoreEmptyBackNavigation, ignoreEmptyRouteChangeTransactions, markRootSpanForDiscard, } from './onSpanEndUtils';
+import { SPAN_ORIGIN_AUTO_NAVIGATION_REACT_NAVIGATION } from './origin';
+import { consumePendingDeepLink, nextEventSeq, peekPendingDeepLink, setPendingDeepLinkListener, } from './pendingDeepLink';
+import { consumePendingExpoRouterNavigation } from './pendingExpoRouterNavigation';
+import { getReactNativeTracingIntegration } from './reactnativetracing';
+import { SEMANTIC_ATTRIBUTE_NAVIGATION_ACTION_TYPE, SEMANTIC_ATTRIBUTE_SENTRY_SOURCE } from './semanticAttributes';
+import { DEFAULT_NAVIGATION_SPAN_NAME, defaultIdleOptions, getDefaultIdleNavigationSpanOptions, startIdleNavigationSpan as startGenericIdleNavigationSpan, } from './span';
+import { addTimeToInitialDisplayFallback } from './timeToDisplayFallback';
+export const INTEGRATION_NAME = 'ReactNavigation';
+const NAVIGATION_HISTORY_MAX_SIZE = 200;
+/**
+ * Extracts dynamic route parameters from a route name and its params.
+ * Matches Expo Router style dynamic segments like `[id]` and `[...slug]`.
+ *
+ * Only params whose keys appear as dynamic segments in the route name are returned,
+ * filtering out non-structural params (query params, etc.) that may contain PII.
+ *
+ * Note: dynamic segment values (e.g. the `123` in `profile/[id]`) may be user-identifiable.
+ * This function only extracts params — callers are responsible for checking `sendDefaultPii`
+ * before including the result in span attributes.
+ *
+ * Previous route params are intentionally not captured — only the current route's
+ * structural params are needed for trace attribution.
+ */
+export function extractDynamicRouteParams(routeName, params) {
+    if (!params) {
+        return undefined;
+    }
+    const dynamicKeys = new Set();
+    const pattern = /\[(?:\.\.\.)?(\w+)\]/g;
+    let match;
+    while ((match = pattern.exec(routeName)) !== null) {
+        if (match[1]) {
+            dynamicKeys.add(match[1]);
+        }
+    }
+    if (dynamicKeys.size === 0) {
+        return undefined;
+    }
+    const result = {};
+    for (const key of dynamicKeys) {
+        if (key in params) {
+            const value = params[key];
+            result[`route.params.${key}`] = Array.isArray(value) ? value.join('/') : String(value !== null && value !== void 0 ? value : '');
+        }
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+/**
+ * Builds a full path from the navigation state by traversing nested navigators.
+ * For example, with nested navigators: "Home/Settings/Profile"
+ */
+function getPathFromState(state) {
+    var _a;
+    if (!state) {
+        return undefined;
+    }
+    const routeNames = [];
+    let currentState = state;
+    while (currentState) {
+        const index = (_a = currentState.index) !== null && _a !== void 0 ? _a : 0;
+        const route = currentState.routes[index];
+        if (route === null || route === void 0 ? void 0 : route.name) {
+            routeNames.push(route.name);
+        }
+        currentState = route === null || route === void 0 ? void 0 : route.state;
+    }
+    return routeNames.length > 0 ? routeNames.join('/') : undefined;
+}
+/**
+ * Instrumentation for React-Navigation V5 and above. See docs or sample app for usage.
+ *
+ * How this works:
+ * - `_onDispatch` is called every time a dispatch happens and sets an IdleTransaction on the scope without any route context.
+ * - `_onStateChange` is then called AFTER the state change happens due to a dispatch and sets the route context onto the active transaction.
+ * - If `_onStateChange` isn't called within `STATE_CHANGE_TIMEOUT_DURATION` of the dispatch, then the transaction is not sampled and finished.
+ */
+export const reactNavigationIntegration = ({ routeChangeTimeoutMs = 1000, enableTimeToInitialDisplay = false, ignoreEmptyBackNavigationTransactions = true, enableTimeToInitialDisplayForPreloadedRoutes = false, useDispatchedActionData = false, useFullPathsForNavigationRoutes = false, enablePrefetchTracking = false, } = {}) => {
+    let navigationContainer;
+    let routeOverrideProvider;
+    let tracing;
+    let idleSpanOptions = defaultIdleOptions;
+    let latestRoute;
+    let latestNavigationSpan;
+    let latestNavigationSpanNameCustomized = false;
+    // Action type of the dispatch that started `latestNavigationSpan`. Tracked
+    // independently of the (flag-gated) span attribute so the same-route discard
+    // works even when `useDispatchedActionData` is off.
+    let latestNavigationActionType;
+    let navigationProcessingSpan;
+    /**
+     * The first nav span that successfully completed a state change — i.e. the
+     * span that mounted the app's initial route. Used (and only used) by the
+     * deep-link listener as a retroactive attribution target for `cold-start`
+     * links that arrive after that state change but before the span's idle
+     * timeout fires. This is the Expo-Router-auto-handled-cold-start case.
+     *
+     * Never updated after the first successful state change — a `cold-start`
+     * link must never retroactively tag a span the user navigated to later.
+     * `warm-open` links bypass this entirely and always wait in the pending
+     * slot for the next dispatched navigation.
+     */
+    let initialFinalizedNavSpan;
+    /**
+     * Monotonic dispatch sequence per span, drawn from the shared `nextEventSeq`
+     * counter. Used to reject warm-open links that arrived *before* a dispatch —
+     * such links cannot have caused that dispatch, so the span must not be
+     * tagged with them.
+     */
+    const spanDispatchSeq = new WeakMap();
+    /**
+     * Attempts to attach the pending deep link to the given span.
+     *
+     * Warm-open links only attach to spans dispatched *after* the link was
+     * received. This prevents an unrelated, already-in-flight navigation from
+     * being tagged when a deep link arrives mid-dispatch but is actually the
+     * trigger of a subsequent navigation.
+     *
+     * Cold-start links attach unconditionally — retroactive attribution to the
+     * initial nav span is the whole point of that source.
+     *
+     * Rejected warm-open links are left in the slot to be picked up by the next
+     * eligible span.
+     */
+    const applyPendingDeepLinkToSpan = (span, maxAgeMs) => {
+        const pending = peekPendingDeepLink(maxAgeMs);
+        if (!pending) {
+            return;
+        }
+        if (pending.source === 'warm-open') {
+            const spanSeq = spanDispatchSeq.get(span);
+            if (spanSeq === undefined || spanSeq <= pending.seq) {
+                // Span was dispatched before (or at the same tick as) the link arrived
+                // — it cannot be the navigation the link triggered. Leave the link in
+                // the slot for the next eligible span.
+                return;
+            }
+        }
+        consumePendingDeepLink(maxAgeMs);
+        tagSpanWithDeepLink(span, pending);
+    };
+    /**
+     * Synchronous listener invoked the moment a deep link is recorded. Returns
+     * `true` only when the link was actually attached to a span — in that case
+     * the pendingDeepLink module skips storing the value. Returns `false` to let
+     * the link fall through to the pending slot for the next dispatched nav.
+     *
+     * Only `cold-start` links may retroactively tag an existing span. The
+     * realistic warm-open flow is "`'url'` event → user handler synchronously
+     * calls `navigation.navigate`": at listener invocation time no link-driven
+     * dispatch has happened yet, so any span we could reach belongs to an
+     * unrelated, prior navigation.
+     */
+    const handleLateDeepLink = (link) => {
+        if (link.source !== 'cold-start') {
+            return false;
+        }
+        // Prefer an in-flight span (dispatch happened, state change pending).
+        if (latestNavigationSpan && isSpanRecording(latestNavigationSpan)) {
+            return tagSpanWithDeepLink(latestNavigationSpan, link);
+        }
+        // Fallback: the initial nav span may have already mounted its route but
+        // still be recording within its idle window (e.g. Expo Router auto-handled
+        // the link before our own `getInitialURL()` chain resolved).
+        if (initialFinalizedNavSpan && isSpanRecording(initialFinalizedNavSpan)) {
+            return tagSpanWithDeepLink(initialFinalizedNavSpan, link);
+        }
+        return false;
+    };
+    let initialStateHandled = false;
+    let isSetupComplete = false;
+    let stateChangeTimeout;
+    let recentRouteKeys = [];
+    if (enableTimeToInitialDisplay) {
+        NATIVE.initNativeReactNavigationNewFrameTracking().catch((reason) => {
+            debug.error(`${INTEGRATION_NAME} Failed to initialize native new frame tracking: ${reason}`);
+        });
+    }
+    /**
+     * Set the initial state and start initial navigation span for the current screen.
+     */
+    const afterAllSetup = (client) => {
+        var _a;
+        tracing = getReactNativeTracingIntegration(client);
+        if (tracing) {
+            idleSpanOptions = {
+                finalTimeout: tracing.options.finalTimeoutMs,
+                idleTimeout: tracing.options.idleTimeoutMs,
+            };
+        }
+        // Listen for deep links as they arrive so we can attribute a span that has
+        // already mounted its route but not yet ended (e.g. Expo Router auto-handled
+        // the link before our integration's `getInitialURL()` chain resolved).
+        setPendingDeepLinkListener(handleLateDeepLink);
+        client.on('close', () => {
+            setPendingDeepLinkListener(undefined);
+        });
+        if (initialStateHandled) {
+            // We create an initial state here to ensure a transaction gets created before the first route mounts.
+            // This assumes that the Sentry.init() call is made before the first route mounts.
+            // If this is not the case, the first transaction will be nameless 'Route Changed'
+            return undefined;
+        }
+        (_a = getAppRegistryIntegration(client)) === null || _a === void 0 ? void 0 : _a.onRunApplication(() => {
+            if (initialStateHandled) {
+                // To avoid conflict with the initial transaction we check if it was already handled.
+                // This ensures runApplication calls after the initial start are correctly traced.
+                // This is used for example when Activity is (re)started on Android.
+                debug.log('[ReactNavigationIntegration] Starting new idle navigation span based on runApplication call.');
+                startIdleNavigationSpan(undefined, true);
+            }
+        });
+        isSetupComplete = true;
+        if (!navigationContainer) {
+            // This is expected as navigation container is registered after the root component is mounted.
+            return undefined;
+        }
+        // Navigation container already registered, create and populate initial span
+        startIdleNavigationSpan();
+        updateLatestNavigationSpanWithCurrentRoute();
+        initialStateHandled = true;
+    };
+    const registerNavigationContainer = (maybeNewNavigationContainer) => {
+        if (RN_GLOBAL_OBJ.__sentry_rn_v5_registered) {
+            debug.log(`${INTEGRATION_NAME} Instrumentation already exists, but registering again...`);
+            // In the past we have not allowed re-registering the navigation container to avoid unexpected behavior.
+            // But this doesn't work for Android and re-recreating application main activity.
+            // Where new navigation container is created and the old one is discarded. We need to re-register to
+            // trace the new navigation container navigation.
+        }
+        let newNavigationContainer;
+        if (isPlainObject(maybeNewNavigationContainer) && 'current' in maybeNewNavigationContainer) {
+            newNavigationContainer = maybeNewNavigationContainer.current;
+        }
+        else {
+            newNavigationContainer = maybeNewNavigationContainer;
+        }
+        if (navigationContainer === newNavigationContainer) {
+            debug.log(`${INTEGRATION_NAME} Navigation container ref is the same as the one already registered.`);
+            return;
+        }
+        navigationContainer = newNavigationContainer;
+        if (!navigationContainer) {
+            debug.warn(`${INTEGRATION_NAME} Received invalid navigation container ref!`);
+            return undefined;
+        }
+        // This action is emitted on every dispatch
+        navigationContainer.addListener('__unsafe_action__', startIdleNavigationSpan);
+        // React Navigation fires `emit('state')` synchronously BEFORE the
+        // `onStateChange` prop callback. Integrations like Expo Router refresh
+        // their route cache (which our route override provider reads) inside that
+        // `onStateChange`, so reading the override synchronously here would return
+        // the previous route for the current transition. Defer with a microtask
+        // so the read happens after the synchronous state-change chain completes
+        // and downstream caches have caught up. See #6436.
+        navigationContainer.addListener('state', scheduleUpdateLatestNavigationSpanWithCurrentRoute);
+        RN_GLOBAL_OBJ.__sentry_rn_v5_registered = true;
+        if (initialStateHandled) {
+            return undefined;
+        }
+        if (!latestNavigationSpan) {
+            if (!isSetupComplete) {
+                debug.log(`${INTEGRATION_NAME} Navigation container registered before integration setup. Initial span will be created when setup completes.`);
+                return undefined;
+            }
+            startIdleNavigationSpan();
+        }
+        // Navigation Container is registered after the first navigation
+        // Initial navigation span was started, after integration setup,
+        // so now we populate it with the current route.
+        updateLatestNavigationSpanWithCurrentRoute();
+        initialStateHandled = true;
+    };
+    /**
+     * Returns `true` when the given route name is focused at some level of the
+     * current navigation state — i.e. it is on the chain of active routes from
+     * the root navigator down to the leaf. Falls back to comparing against the
+     * leaf route only when the full state is not available.
+     */
+    const isRouteFocused = (routeName) => {
+        var _a, _b;
+        try {
+            const rootState = navigationContainer === null || navigationContainer === void 0 ? void 0 : navigationContainer.getState();
+            let currentState = rootState;
+            while (currentState) {
+                const route = currentState.routes[(_a = currentState.index) !== null && _a !== void 0 ? _a : 0];
+                if ((route === null || route === void 0 ? void 0 : route.name) === routeName) {
+                    return true;
+                }
+                currentState = route === null || route === void 0 ? void 0 : route.state;
+            }
+            if (!rootState) {
+                return ((_b = navigationContainer === null || navigationContainer === void 0 ? void 0 : navigationContainer.getCurrentRoute()) === null || _b === void 0 ? void 0 : _b.name) === routeName;
+            }
+        }
+        catch (e) {
+            debug.warn(`${INTEGRATION_NAME} Failed to read navigation state to check focused route.`, e);
+        }
+        return false;
+    };
+    /**
+     * To be called on every React-Navigation action dispatch.
+     * It does not name the transaction or populate it with route information. Instead, it waits for the state to fully change
+     * and gets the route information from there, @see updateLatestNavigationSpanWithCurrentRoute
+     *
+     * @param unknownEvent - The event object that contains navigation action data
+     * @param isAppRestart - Whether this span is being started due to an app restart rather than a normal navigation action
+     */
+    // oxlint-disable-next-line eslint(complexity)
+    const startIdleNavigationSpan = (unknownEvent, isAppRestart = false) => {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const event = unknownEvent;
+        const actionType = (_b = (_a = event === null || event === void 0 ? void 0 : event.data) === null || _a === void 0 ? void 0 : _a.action) === null || _b === void 0 ? void 0 : _b.type;
+        const targetRouteName = getRouteNameFromAction(event);
+        // Always drain the pending Expo Router value on this listener invocation —
+        // even if we end up short-circuiting below (noop / PRELOAD / drawer /
+        // missing route name). If the underlying router call did not produce an
+        // idle nav span, the value must not leak onto the next, unrelated
+        // navigation. Apply it only if we actually create `latestNavigationSpan`.
+        const pendingExpoRouter = consumePendingExpoRouterNavigation();
+        if (event && !isAppRestart && !((_c = event.data) === null || _c === void 0 ? void 0 : _c.noop)) {
+            addBreadcrumb({
+                category: 'navigation.dispatch',
+                type: 'navigation',
+                message: targetRouteName
+                    ? `Dispatched ${actionType !== null && actionType !== void 0 ? actionType : 'NAVIGATE'} to ${targetRouteName}`
+                    : `Dispatched ${actionType !== null && actionType !== void 0 ? actionType : 'NAVIGATE'}`,
+                data: Object.assign(Object.assign({}, (actionType ? { action_type: actionType } : undefined)), (targetRouteName ? { to: targetRouteName } : undefined)),
+                level: 'info',
+            });
+        }
+        if (useDispatchedActionData && (event === null || event === void 0 ? void 0 : event.data.noop)) {
+            debug.log(`${INTEGRATION_NAME} Navigation action is a noop, not starting navigation span.`);
+            return;
+        }
+        const navigationActionType = useDispatchedActionData ? actionType : undefined;
+        // Handle PRELOAD actions separately if prefetch tracking is enabled
+        if (enablePrefetchTracking && navigationActionType === 'PRELOAD') {
+            const preloadData = event === null || event === void 0 ? void 0 : event.data.action;
+            const payload = preloadData === null || preloadData === void 0 ? void 0 : preloadData.payload;
+            const targetRoute = payload && typeof payload === 'object' && 'name' in payload && typeof payload.name === 'string'
+                ? payload.name
+                : 'Unknown Route';
+            debug.log(`${INTEGRATION_NAME} Starting prefetch span for route: ${targetRoute}`);
+            const prefetchSpan = startInactiveSpan({
+                op: 'navigation.prefetch',
+                name: `Prefetch ${targetRoute}`,
+                attributes: {
+                    'route.name': targetRoute,
+                },
+            });
+            // Store prefetch span to end it when state changes or timeout
+            navigationProcessingSpan = prefetchSpan;
+            // Set timeout to ensure we don't leave hanging spans
+            stateChangeTimeout = setTimeout(() => {
+                if (navigationProcessingSpan === prefetchSpan) {
+                    debug.log(`${INTEGRATION_NAME} Prefetch span timed out for route: ${targetRoute}`);
+                    prefetchSpan === null || prefetchSpan === void 0 ? void 0 : prefetchSpan.setStatus({ code: SPAN_STATUS_OK });
+                    prefetchSpan === null || prefetchSpan === void 0 ? void 0 : prefetchSpan.end();
+                    navigationProcessingSpan = undefined;
+                }
+            }, routeChangeTimeoutMs);
+            return;
+        }
+        if (useDispatchedActionData &&
+            navigationActionType &&
+            [
+                // Process common actions
+                'PRELOAD', // Still filter PRELOAD when enablePrefetchTracking is false
+                'SET_PARAMS',
+                // Drawer actions
+                'OPEN_DRAWER',
+                'CLOSE_DRAWER',
+                'TOGGLE_DRAWER',
+            ].includes(navigationActionType)) {
+            debug.log(`${INTEGRATION_NAME} Navigation action is ${navigationActionType}, not starting navigation span.`);
+            return;
+        }
+        // A `POP_TO` that both targets an already-focused route AND carries the
+        // `withAnchor` marker (`params.initial === false`) is not a user-facing
+        // navigation — it's Expo Router's bookkeeping dispatch, emitted right after
+        // a `withAnchor` navigation purely to stamp `initial: false` onto the
+        // destination it just navigated to. Starting a span here would either
+        // discard the real navigation's in-flight span (state changes are applied
+        // in a deferred microtask, see #6436) or ship a spurious duplicate
+        // transaction that steals the real navigation's child spans (#6434).
+        //
+        // Requiring the `initial === false` marker (only ever set by `withAnchor`,
+        // see expo-router's `getNavigationAction`) is what keeps a genuine `popTo`
+        // to an earlier *same-named* route in the stack (e.g. `[id]` → `[id]`) from
+        // being wrongly skipped: those carry no `initial` param. The `route.key`
+        // check in `updateLatestNavigationSpanWithCurrentRoute` backstops any
+        // bookkeeping dispatch that slips past this filter.
+        // Driven off `actionType` (parsed unconditionally), not `navigationActionType`,
+        // so it also applies to the default `expoRouterIntegration` setup where
+        // `useDispatchedActionData` is off — that is where this bug was reported.
+        const popToParams = (_f = (_e = (_d = event === null || event === void 0 ? void 0 : event.data) === null || _d === void 0 ? void 0 : _d.action) === null || _e === void 0 ? void 0 : _e.payload) === null || _f === void 0 ? void 0 : _f.params;
+        if (actionType === 'POP_TO' &&
+            targetRouteName &&
+            (popToParams === null || popToParams === void 0 ? void 0 : popToParams.initial) === false &&
+            isRouteFocused(targetRouteName)) {
+            debug.log(`${INTEGRATION_NAME} POP_TO targets the already focused route ${targetRouteName}, not starting navigation span.`);
+            return;
+        }
+        // Extract route name from dispatch action payload when available
+        const dispatchedRouteName = useDispatchedActionData ? targetRouteName : undefined;
+        if (useDispatchedActionData && event && !dispatchedRouteName && !isAppRestart) {
+            debug.log(`${INTEGRATION_NAME} Navigation action has no route name in payload, not starting navigation span.`);
+            return;
+        }
+        if (latestNavigationSpan) {
+            debug.log(`${INTEGRATION_NAME} A transaction was detected that turned out to be a noop, discarding.`);
+            _discardLatestTransaction();
+            clearStateChangeTimeout();
+        }
+        const spanOptions = getDefaultIdleNavigationSpanOptions();
+        if (dispatchedRouteName) {
+            spanOptions.name = dispatchedRouteName;
+        }
+        const originalName = spanOptions.name;
+        const finalSpanOptions = (tracing === null || tracing === void 0 ? void 0 : tracing.options.beforeStartSpan)
+            ? tracing.options.beforeStartSpan(spanOptions)
+            : spanOptions;
+        latestNavigationSpanNameCustomized = finalSpanOptions.name !== originalName;
+        latestNavigationSpan = startGenericIdleNavigationSpan(finalSpanOptions, Object.assign(Object.assign({}, idleSpanOptions), { isAppRestart }));
+        latestNavigationActionType = actionType;
+        latestNavigationSpan === null || latestNavigationSpan === void 0 ? void 0 : latestNavigationSpan.setAttribute(SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SPAN_ORIGIN_AUTO_NAVIGATION_REACT_NAVIGATION);
+        latestNavigationSpan === null || latestNavigationSpan === void 0 ? void 0 : latestNavigationSpan.setAttribute(SEMANTIC_ATTRIBUTE_NAVIGATION_ACTION_TYPE, navigationActionType);
+        if (pendingExpoRouter && latestNavigationSpan) {
+            latestNavigationSpan.setAttribute('navigation.method', pendingExpoRouter.method);
+        }
+        // Stamp the span with a monotonic sequence so the deep-link consumer can
+        // determine whether a pending link arrived before or after this dispatch.
+        if (latestNavigationSpan) {
+            spanDispatchSeq.set(latestNavigationSpan, nextEventSeq());
+        }
+        // We deliberately do NOT consume the pending deep link here — if this span
+        // is later discarded (noop / timeout / empty route), a still-fresh pending
+        // value must remain available for the next nav. The pending value is
+        // consumed once a span actually mounts its route (see
+        // `updateLatestNavigationSpanWithCurrentRoute`).
+        if (ignoreEmptyBackNavigationTransactions) {
+            ignoreEmptyBackNavigation(getClient(), latestNavigationSpan);
+        }
+        // Always discard transactions that never receive route information
+        const spanToCheck = latestNavigationSpan;
+        const spanName = (_g = finalSpanOptions.name) !== null && _g !== void 0 ? _g : DEFAULT_NAVIGATION_SPAN_NAME;
+        ignoreEmptyRouteChangeTransactions(getClient(), spanToCheck, spanName, () => latestNavigationSpan === spanToCheck);
+        if (enableTimeToInitialDisplay && latestNavigationSpan) {
+            NATIVE.setActiveSpanId(latestNavigationSpan.spanContext().spanId);
+            navigationProcessingSpan = startInactiveSpan({
+                op: 'navigation.processing',
+                name: 'Navigation dispatch to navigation cancelled or screen mounted',
+                startTime: spanToJSON(latestNavigationSpan).start_timestamp,
+            });
+            navigationProcessingSpan.setAttribute(SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SPAN_ORIGIN_AUTO_NAVIGATION_REACT_NAVIGATION);
+        }
+        stateChangeTimeout = setTimeout(_discardLatestTransaction, routeChangeTimeoutMs);
+    };
+    /**
+     * Defer {@link updateLatestNavigationSpanWithCurrentRoute} until the current
+     * synchronous state-change chain unwinds so route override providers backed
+     * by a downstream cache (e.g. Expo Router's router-store, which is refreshed
+     * via `NavigationContainer.onStateChange`) have picked up the new route. See
+     * #6436.
+     */
+    const scheduleUpdateLatestNavigationSpanWithCurrentRoute = () => {
+        const g = globalThis;
+        if (typeof g.queueMicrotask === 'function') {
+            g.queueMicrotask(updateLatestNavigationSpanWithCurrentRoute);
+            return;
+        }
+        // Fallback for runtimes without `queueMicrotask`. `.catch()` handler is
+        // there only to satisfy the `no-floating-promises` lint — the update
+        // function does not throw.
+        Promise.resolve()
+            .then(updateLatestNavigationSpanWithCurrentRoute)
+            .catch(() => { });
+    };
+    /**
+     * To be called AFTER the state has been changed to populate the transaction with the current route.
+     */
+    // oxlint-disable-next-line eslint(complexity)
+    const updateLatestNavigationSpanWithCurrentRoute = () => {
+        var _a, _b, _c, _d;
+        const stateChangedTimestamp = timestampInSeconds();
+        const previousRoute = latestRoute;
+        if (!navigationContainer) {
+            debug.warn(`${INTEGRATION_NAME} Missing navigation container ref. Route transactions will not be sent.`);
+            return undefined;
+        }
+        const route = navigationContainer.getCurrentRoute();
+        if (!route) {
+            debug.log(`[${INTEGRATION_NAME}] Navigation state changed, but no route is rendered.`);
+            return undefined;
+        }
+        if (!latestNavigationSpan) {
+            debug.log(`[${INTEGRATION_NAME}] Navigation state changed, but navigation transaction was not started on dispatch.`);
+            return undefined;
+        }
+        if (enableTimeToInitialDisplay) {
+            addTimeToInitialDisplayFallback(latestNavigationSpan.spanContext().spanId, NATIVE.getNewScreenTimeToDisplay());
+        }
+        if ((previousRoute === null || previousRoute === void 0 ? void 0 : previousRoute.key) === route.key) {
+            debug.log(`[${INTEGRATION_NAME}] Navigation state changed, but route is the same as previous.`);
+            // Even a same-route state change is a legitimate destination for a
+            // deep link (e.g. deep-linking to the screen you're already on). Make
+            // sure the pending link still gets attributed before we drop the span
+            // reference.
+            applyPendingDeepLinkToSpan(latestNavigationSpan, routeChangeTimeoutMs);
+            pushRecentRouteKey(route.key);
+            latestRoute = route;
+            // A `POP_TO` span that landed on the route we were already on (same
+            // `route.key`) was a params-only bookkeeping dispatch — e.g. Expo
+            // Router's `withAnchor` anchor stamping — that slipped past the
+            // dispatch-time filter (for instance a nested destination whose payload
+            // name matches none of the focused route names). Letting the span run
+            // would ship a spurious duplicate transaction that collects the real
+            // navigation's in-flight child spans, so discard it unless it carries a
+            // deep link (#6434). We check `taggedDeepLinkSpans` rather than the
+            // just-attached result so a span tagged earlier via the synchronous
+            // late-arrival listener is also preserved. Keyed on `route.key`, this
+            // never affects a genuine navigation that actually changed the route.
+            if (!taggedDeepLinkSpans.has(latestNavigationSpan) && latestNavigationActionType === 'POP_TO') {
+                debug.log(`[${INTEGRATION_NAME}] Discarding POP_TO navigation span that did not change the route.`);
+                clearStateChangeTimeout();
+                _discardLatestTransaction();
+                return undefined;
+            }
+            // Clear the latest transaction as it has been handled.
+            latestNavigationSpan = undefined;
+            return undefined;
+        }
+        const routeHasBeenSeen = recentRouteKeys.includes(route.key);
+        // Resolve route name. Order of preference:
+        //   1. Route override provider (e.g. Expo Router templated path)
+        //   2. Full path joined from React Navigation state
+        //   3. React Navigation's leaf route name
+        let routeName = route.name;
+        let routePath;
+        let routeUrl;
+        let routeParams = route.params;
+        let override;
+        try {
+            override = routeOverrideProvider === null || routeOverrideProvider === void 0 ? void 0 : routeOverrideProvider();
+        }
+        catch (e) {
+            debug.warn(`${INTEGRATION_NAME} Route override provider threw, falling back to React Navigation route.`, e);
+        }
+        if (override === null || override === void 0 ? void 0 : override.templatedPath) {
+            routeName = override.templatedPath;
+            routePath = override.templatedPath;
+            routeUrl = override.concreteUrl;
+            routeParams = (_a = override.params) !== null && _a !== void 0 ? _a : route.params;
+        }
+        else if (useFullPathsForNavigationRoutes) {
+            const navigationState = navigationContainer.getState();
+            routeName = getPathFromState(navigationState) || route.name;
+        }
+        // Consume any pending deep link and attach it to this span. Done here
+        // (after route info is known) so the link is only attributed to a span
+        // that actually mounted a route — not one that was later discarded.
+        applyPendingDeepLinkToSpan(latestNavigationSpan, routeChangeTimeoutMs);
+        // Capture the first finalized nav span for the cold-start late-arrival
+        // fallback. Set exactly once, then frozen — a cold-start link must never
+        // retroactively tag a navigation the user performed later.
+        if (!initialFinalizedNavSpan) {
+            initialFinalizedNavSpan = latestNavigationSpan;
+        }
+        navigationProcessingSpan === null || navigationProcessingSpan === void 0 ? void 0 : navigationProcessingSpan.updateName(`Navigation dispatch to screen ${routeName} mounted`);
+        navigationProcessingSpan === null || navigationProcessingSpan === void 0 ? void 0 : navigationProcessingSpan.setStatus({ code: SPAN_STATUS_OK });
+        navigationProcessingSpan === null || navigationProcessingSpan === void 0 ? void 0 : navigationProcessingSpan.end(stateChangedTimestamp);
+        navigationProcessingSpan = undefined;
+        if (!latestNavigationSpanNameCustomized) {
+            latestNavigationSpan.updateName(routeName);
+        }
+        const sendDefaultPii = (_d = (_c = (_b = getClient()) === null || _b === void 0 ? void 0 : _b.getOptions()) === null || _c === void 0 ? void 0 : _c.sendDefaultPii) !== null && _d !== void 0 ? _d : false;
+        latestNavigationSpan.setAttributes(Object.assign(Object.assign(Object.assign(Object.assign({ 'route.name': routeName, 'route.key': route.key }, (routePath ? { 'route.path': routePath } : undefined)), (sendDefaultPii && routeUrl ? { 'route.url': routeUrl } : undefined)), (sendDefaultPii ? extractDynamicRouteParams(routeName, routeParams) : undefined)), { 'route.has_been_seen': routeHasBeenSeen, 'previous_route.name': previousRoute === null || previousRoute === void 0 ? void 0 : previousRoute.name, 'previous_route.key': previousRoute === null || previousRoute === void 0 ? void 0 : previousRoute.key, [SEMANTIC_ATTRIBUTE_SENTRY_SOURCE]: 'component', [SEMANTIC_ATTRIBUTE_SENTRY_OP]: 'navigation' }));
+        // Clear the timeout so the transaction does not get cancelled.
+        clearStateChangeTimeout();
+        addBreadcrumb({
+            category: 'navigation',
+            type: 'navigation',
+            message: `Navigation to ${routeName}`,
+            data: {
+                from: previousRoute === null || previousRoute === void 0 ? void 0 : previousRoute.name,
+                to: routeName,
+            },
+        });
+        tracing === null || tracing === void 0 ? void 0 : tracing.setCurrentRoute(routeName);
+        pushRecentRouteKey(route.key);
+        if ((override === null || override === void 0 ? void 0 : override.templatedPath) || useFullPathsForNavigationRoutes) {
+            latestRoute = Object.assign(Object.assign({}, route), { name: routeName });
+        }
+        else {
+            latestRoute = route;
+        }
+        // Clear the latest transaction as it has been handled.
+        latestNavigationSpan = undefined;
+    };
+    /** Pushes a recent route key, and removes earlier routes when there is greater than the max length */
+    const pushRecentRouteKey = (key) => {
+        recentRouteKeys.push(key);
+        if (recentRouteKeys.length > NAVIGATION_HISTORY_MAX_SIZE) {
+            recentRouteKeys = recentRouteKeys.slice(recentRouteKeys.length - NAVIGATION_HISTORY_MAX_SIZE);
+        }
+    };
+    /** Cancels the latest transaction so it does not get sent to Sentry. */
+    const _discardLatestTransaction = () => {
+        if (latestNavigationSpan) {
+            if (isSentrySpan(latestNavigationSpan)) {
+                markRootSpanForDiscard(latestNavigationSpan, 'discarded_latest_navigation');
+            }
+            // TODO: What if it's not SentrySpan?
+            latestNavigationSpan.end();
+            latestNavigationSpan = undefined;
+        }
+        if (navigationProcessingSpan) {
+            // End before dropping the reference so we don't leave an unfinished span
+            // dangling. It is a child of the (now discarded) navigation span, so it
+            // is dropped with the transaction rather than sent on its own.
+            navigationProcessingSpan.end();
+            navigationProcessingSpan = undefined;
+        }
+    };
+    const clearStateChangeTimeout = () => {
+        if (typeof stateChangeTimeout !== 'undefined') {
+            clearTimeout(stateChangeTimeout);
+            stateChangeTimeout = undefined;
+        }
+    };
+    const _setRouteOverrideProvider = (provider) => {
+        routeOverrideProvider = provider;
+    };
+    return {
+        name: INTEGRATION_NAME,
+        afterAllSetup,
+        registerNavigationContainer,
+        _setRouteOverrideProvider,
+        options: {
+            routeChangeTimeoutMs,
+            enableTimeToInitialDisplay,
+            ignoreEmptyBackNavigationTransactions,
+            enableTimeToInitialDisplayForPreloadedRoutes,
+            useDispatchedActionData,
+            useFullPathsForNavigationRoutes,
+            enablePrefetchTracking,
+        },
+    };
+};
+/**
+ * Per-span guard against double-tagging deep-link attributes. Shared between
+ * the synchronous listener path (late arrival) and the post-state-change path.
+ */
+const taggedDeepLinkSpans = new WeakSet();
+/**
+ * Annotates the given span with deep-link attributes if it has not already
+ * been annotated. Returns `true` when the span was newly tagged, `false` when
+ * it was already tagged (so callers can decide whether to keep the link
+ * around for another span).
+ */
+function tagSpanWithDeepLink(span, link) {
+    var _a, _b, _c;
+    if (taggedDeepLinkSpans.has(span)) {
+        return false;
+    }
+    taggedDeepLinkSpans.add(span);
+    const sendDefaultPii = (_c = (_b = (_a = getClient()) === null || _a === void 0 ? void 0 : _a.getOptions()) === null || _b === void 0 ? void 0 : _b.sendDefaultPii) !== null && _c !== void 0 ? _c : false;
+    const url = sendDefaultPii ? link.url : sanitizeDeepLinkUrl(link.url);
+    span.setAttributes({
+        'navigation.trigger': 'deeplink',
+        'deeplink.url': url,
+        // Duration between URL receipt and the moment the span is annotated —
+        // approximates the gap between "link received" and "navigation dispatched
+        // / handled".
+        'deeplink.dispatch_delay_ms': Math.max(0, Date.now() - link.receivedAtMs),
+    });
+    return true;
+}
+/** Returns true if the span is still recording (has not been ended). */
+function isSpanRecording(span) {
+    return spanToJSON(span).timestamp === undefined;
+}
+/**
+ * Extracts the route name from a React Navigation dispatch action payload.
+ *
+ * Actions like NAVIGATE, PUSH, REPLACE, JUMP_TO carry the target route name
+ * in `action.payload.name`. Actions like GO_BACK, POP, POP_TO_TOP do not.
+ */
+function getRouteNameFromAction(event) {
+    var _a, _b;
+    const payload = (_b = (_a = event === null || event === void 0 ? void 0 : event.data) === null || _a === void 0 ? void 0 : _a.action) === null || _b === void 0 ? void 0 : _b.payload;
+    if (payload && typeof payload === 'object' && 'name' in payload && typeof payload.name === 'string') {
+        return payload.name;
+    }
+    return undefined;
+}
+/**
+ * Returns React Navigation integration of the given client.
+ */
+export function getReactNavigationIntegration(client) {
+    return client.getIntegrationByName(INTEGRATION_NAME);
+}
+//# sourceMappingURL=reactnavigation.js.map

@@ -1,0 +1,49 @@
+import type { Integration } from '@sentry/core';
+interface BreadcrumbsOptions {
+    /**
+     * Log calls to console.log, console.debug, and so on.
+     */
+    console: boolean;
+    /**
+     * Log all click and keypress events.
+     *
+     * Only available on web. In React Native this is a no-op.
+     */
+    dom: boolean | {
+        serializeAttribute?: string | string[];
+        maxStringLength?: number;
+    };
+    /**
+     * Log HTTP requests done with the global Fetch API.
+     *
+     * Disabled by default in React Native because fetch is built on XMLHttpRequest.
+     * Enabled by default on web and when Expo's native fetch (`expo/fetch`) is active.
+     *
+     * Setting `fetch: true` and `xhr: true` will cause duplicates in React Native
+     * when using the default XHR-based fetch polyfill.
+     */
+    fetch: boolean;
+    /**
+     * Log calls to history.pushState and related APIs.
+     *
+     * Only available on web. In React Native this is a no-op.
+     */
+    history: boolean;
+    /**
+     * Log whenever we send an event to the server.
+     */
+    sentry: boolean;
+    /**
+     * Log HTTP requests done with the XHR API.
+     *
+     * In standard React Native, fetch is built on XMLHttpRequest,
+     * so XHR breadcrumbs also capture fetch requests.
+     * When Expo's native fetch (`expo/fetch`) is active, XHR does not
+     * capture fetch requests — both `fetch` and `xhr` can be enabled
+     * without duplicates.
+     */
+    xhr: boolean;
+}
+export declare const breadcrumbsIntegration: (options?: Partial<BreadcrumbsOptions>) => Integration;
+export {};
+//# sourceMappingURL=breadcrumbs.d.ts.map

@@ -1,0 +1,98 @@
+import { instrumentOutgoingRequests } from '@sentry/browser';
+import { debug, getClient } from '@sentry/core';
+import { isExpoFetchEnabled, isWeb } from '../utils/environment';
+import { getDevServer } from './../integrations/debugsymbolicatorutils';
+import { getTransactionEventDiscardReason } from './onSpanEndUtils';
+import { addDefaultOpForSpanFrom, addThreadInfoToSpan, defaultIdleOptions } from './span';
+export const INTEGRATION_NAME = 'ReactNativeTracing';
+function getDefaultTracePropagationTargets() {
+    if (isWeb()) {
+        return undefined;
+    }
+    return [/.*/];
+}
+export const defaultReactNativeTracingOptions = {
+    traceFetch: false,
+    traceXHR: true,
+    enableHTTPTimings: true,
+};
+export const reactNativeTracingIntegration = (options = {}) => {
+    var _a, _b, _c, _d;
+    const state = {
+        currentRoute: undefined,
+    };
+    // RN's default fetch is a `whatwg-fetch` polyfill over XHR, so tracing both causes duplicates.
+    // Expo SDK 56+ replaces fetch with a native implementation (`expo/fetch`) that bypasses XHR,
+    // so fetch tracing must be enabled for network requests to be captured.
+    // Computed here (not at module level) to ensure expo/fetch polyfill is installed before detection.
+    const traceFetchDefault = isWeb() || isExpoFetchEnabled();
+    const finalOptions = Object.assign(Object.assign(Object.assign(Object.assign({}, defaultReactNativeTracingOptions), { traceFetch: traceFetchDefault }), options), { beforeStartSpan: (_a = options.beforeStartSpan) !== null && _a !== void 0 ? _a : ((options) => options), finalTimeoutMs: (_b = options.finalTimeoutMs) !== null && _b !== void 0 ? _b : defaultIdleOptions.finalTimeout, idleTimeoutMs: (_c = options.idleTimeoutMs) !== null && _c !== void 0 ? _c : defaultIdleOptions.idleTimeout });
+    const userShouldCreateSpanForRequest = finalOptions.shouldCreateSpanForRequest;
+    // Drop Dev Server Spans
+    const devServerUrl = (_d = getDevServer()) === null || _d === void 0 ? void 0 : _d.url;
+    const finalShouldCreateSpanForRequest = devServerUrl === undefined
+        ? userShouldCreateSpanForRequest
+        : (url) => {
+            if (url.startsWith(devServerUrl)) {
+                return false;
+            }
+            if (userShouldCreateSpanForRequest) {
+                return userShouldCreateSpanForRequest(url);
+            }
+            return true;
+        };
+    finalOptions.shouldCreateSpanForRequest = finalShouldCreateSpanForRequest;
+    const setup = (client) => {
+        addDefaultOpForSpanFrom(client);
+        addThreadInfoToSpan(client);
+        instrumentOutgoingRequests(client, {
+            traceFetch: finalOptions.traceFetch,
+            traceXHR: finalOptions.traceXHR,
+            shouldCreateSpanForRequest: finalOptions.shouldCreateSpanForRequest,
+            tracePropagationTargets: client.getOptions().tracePropagationTargets || getDefaultTracePropagationTargets(),
+        });
+    };
+    const processEvent = (event, _hint, _client) => {
+        if (event.type === 'transaction') {
+            const discardReason = getTransactionEventDiscardReason(event);
+            if (discardReason) {
+                debug.log(`[ReactNativeTracing] Dropping transaction marked for discard (reason: ${discardReason}).`);
+                // `@sentry/core` automatically records a dropped event with reason
+                // `event_processor` when a processor returns `null`, so we don't call
+                // `recordDroppedEvent` here to avoid double-counting in client reports.
+                return null;
+            }
+        }
+        if (event.contexts && state.currentRoute) {
+            event.contexts.app = Object.assign({ view_names: [state.currentRoute] }, event.contexts.app);
+        }
+        return event;
+    };
+    return {
+        name: INTEGRATION_NAME,
+        setup,
+        processEvent,
+        options: finalOptions,
+        state,
+        setCurrentRoute: (route) => {
+            state.currentRoute = route;
+        },
+    };
+};
+/**
+ * Returns the current React Native Tracing integration.
+ */
+export function getCurrentReactNativeTracingIntegration() {
+    const client = getClient();
+    if (!client) {
+        return undefined;
+    }
+    return getReactNativeTracingIntegration(client);
+}
+/**
+ * Returns React Native Tracing integration of given client.
+ */
+export function getReactNativeTracingIntegration(client) {
+    return client.getIntegrationByName(INTEGRATION_NAME);
+}
+//# sourceMappingURL=reactnativetracing.js.map

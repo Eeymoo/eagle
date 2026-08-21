@@ -1,0 +1,143 @@
+import { debug } from '@sentry/core';
+import { createSpanJSON } from '../tracing/utils';
+import { drainTurboModuleAggregate, HISTOGRAM_BUCKET_LABELS, hasTurboModuleAggregateData, } from '../turbomodule';
+export const TURBO_MODULES_AGGREGATE_OP = 'turbo_modules.aggregate';
+export const TURBO_MODULES_AGGREGATE_ORIGIN = 'auto.tracing.turbo_modules';
+const MAX_AGGREGATE_ATTRIBUTE_ROWS = 64;
+/**
+ * Drains the aggregate into the transaction event as a synthetic child span
+ * plus headline measurements. Runs before `beforeSendTransaction`, so a
+ * user-dropped transaction loses its interval — bounded and self-healing.
+ */
+export function attachAggregateToTransactionEvent(event) {
+    var _a, _b, _c;
+    const trace = (_a = event.contexts) === null || _a === void 0 ? void 0 : _a.trace;
+    if (!(trace === null || trace === void 0 ? void 0 : trace.trace_id) || !trace.span_id) {
+        return;
+    }
+    const startTs = event.start_timestamp;
+    const endTs = event.timestamp;
+    if (typeof startTs !== 'number' || typeof endTs !== 'number') {
+        return;
+    }
+    const snapshot = drainTurboModuleAggregate();
+    if (snapshot.length === 0) {
+        return;
+    }
+    const totals = summarise(snapshot);
+    const topByTotalMs = [...snapshot].sort((a, b) => b.totalDurationMs - a.totalDurationMs);
+    const aggregateSpan = createSpanJSON({
+        op: TURBO_MODULES_AGGREGATE_OP,
+        description: 'TurboModule call aggregate',
+        start_timestamp: startTs,
+        timestamp: endTs,
+        trace_id: trace.trace_id,
+        parent_span_id: trace.span_id,
+        origin: TURBO_MODULES_AGGREGATE_ORIGIN,
+        data: Object.assign({ 'turbo_modules.total_call_count': totals.callCount, 'turbo_modules.total_error_count': totals.errorCount, 'turbo_modules.total_duration_ms': roundMs(totals.totalDurationMs), 'turbo_modules.unique_methods': snapshot.length }, serialiseRows(topByTotalMs.slice(0, MAX_AGGREGATE_ATTRIBUTE_ROWS))),
+    });
+    event.spans = (_b = event.spans) !== null && _b !== void 0 ? _b : [];
+    event.spans.push(aggregateSpan);
+    event.measurements = (_c = event.measurements) !== null && _c !== void 0 ? _c : {};
+    event.measurements['turbo_modules.call_count'] = { value: totals.callCount, unit: 'none' };
+    event.measurements['turbo_modules.error_count'] = { value: totals.errorCount, unit: 'none' };
+    event.measurements['turbo_modules.total_ms'] = { value: roundMs(totals.totalDurationMs), unit: 'millisecond' };
+    const top = topByTotalMs[0];
+    if (top) {
+        event.measurements['turbo_modules.top_module_ms'] = {
+            value: roundMs(top.totalDurationMs),
+            unit: 'millisecond',
+        };
+    }
+    if (snapshot.length > MAX_AGGREGATE_ATTRIBUTE_ROWS) {
+        debug.log(`[TurboModuleContext] Aggregate has ${snapshot.length} rows, truncated to top ${MAX_AGGREGATE_ATTRIBUTE_ROWS} ` +
+            `by total_ms on the aggregate span. Headline measurements still reflect the full totals.`);
+    }
+}
+/** Custom Sentry event so long-running sessions without a transaction still emit a signal. */
+export function flushPeriodicAggregate(client) {
+    var _a;
+    if (!hasTurboModuleAggregateData()) {
+        return;
+    }
+    const snapshot = drainTurboModuleAggregate();
+    const totals = summarise(snapshot);
+    const topByTotalMs = [...snapshot].sort((a, b) => b.totalDurationMs - a.totalDurationMs);
+    (_a = client.captureEvent) === null || _a === void 0 ? void 0 : _a.call(client, {
+        message: 'TurboModule aggregate (periodic)',
+        level: 'info',
+        tags: {
+            'event.kind': 'turbo_modules.aggregate',
+        },
+        extra: {
+            total_call_count: totals.callCount,
+            total_error_count: totals.errorCount,
+            total_duration_ms: roundMs(totals.totalDurationMs),
+            unique_methods: snapshot.length,
+            modules: topByTotalMs.slice(0, MAX_AGGREGATE_ATTRIBUTE_ROWS).map(serialiseRowAsObject),
+        },
+    });
+}
+function summarise(snapshot) {
+    let callCount = 0;
+    let errorCount = 0;
+    let totalDurationMs = 0;
+    for (const row of snapshot) {
+        callCount += row.callCount;
+        errorCount += row.errorCount;
+        totalDurationMs += row.totalDurationMs;
+    }
+    return { callCount, errorCount, totalDurationMs };
+}
+function serialiseRows(rows) {
+    const out = {};
+    for (const row of rows) {
+        const prefix = `turbo_modules.${safeKeyPart(row.name)}.${safeKeyPart(row.method)}.${row.kind}`;
+        out[`${prefix}.count`] = row.callCount;
+        out[`${prefix}.error_count`] = row.errorCount;
+        out[`${prefix}.total_ms`] = roundMs(row.totalDurationMs);
+        out[`${prefix}.max_ms`] = roundMs(row.maxDurationMs);
+        out[`${prefix}.arch`] = row.arch;
+        for (let i = 0; i < row.buckets.length; i++) {
+            const label = HISTOGRAM_BUCKET_LABELS[i];
+            const count = row.buckets[i];
+            if (label !== undefined && count !== undefined) {
+                out[`${prefix}.${label}`] = count;
+            }
+        }
+    }
+    return out;
+}
+function serialiseRowAsObject(row) {
+    const histogram = {};
+    for (let i = 0; i < row.buckets.length; i++) {
+        const label = HISTOGRAM_BUCKET_LABELS[i];
+        const count = row.buckets[i];
+        if (label !== undefined && count !== undefined) {
+            histogram[label] = count;
+        }
+    }
+    return {
+        name: row.name,
+        method: row.method,
+        kind: row.kind,
+        arch: row.arch,
+        call_count: row.callCount,
+        error_count: row.errorCount,
+        total_ms: roundMs(row.totalDurationMs),
+        max_ms: roundMs(row.maxDurationMs),
+        histogram,
+    };
+}
+export function roundMs(value) {
+    return Math.round(value * 100) / 100;
+}
+/**
+ * `.` is the attribute-key delimiter — escape it to `_` in name/method so keys
+ * don't collide. `_` is pre-escaped to `__` so `(a.b, c)` and `(a_b, c)` still
+ * round-trip to distinct keys.
+ */
+function safeKeyPart(s) {
+    return s.replace(/_/g, '__').replace(/\./g, '_');
+}
+//# sourceMappingURL=turboModuleContextFlush.js.map

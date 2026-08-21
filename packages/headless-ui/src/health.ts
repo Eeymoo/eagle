@@ -140,6 +140,10 @@ export class HealthController {
     const now = this.deps.port.now();
     const todo: Channel[] = [];
     for (const c of channels) {
+      // VOD items (jellyfin-video) are files on a healthy server — probing
+      // thousands of them is waste; playback failure still penalizes via
+      // markBad(). Health checks are a live-stream concept.
+      if (c.source === 'jellyfin-video') continue;
       const cached = this.cache.get(c.id);
       if (cached && cached.ok && now - cached.at < CACHE_TTL_MS) continue; // fresh healthy
       if (this.isBad(c.id)) continue; // already bad

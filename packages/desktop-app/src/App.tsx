@@ -13,6 +13,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { EagleCore } from '@eagle/core';
 import type { Channel, SourcePlugin } from '@eagle/core';
 import { jellyfinPlugin } from '@eagle/jellyfin-plugin';
+import { jellyfinVideoPlugin } from '@eagle/jellyfin-video-plugin';
 import { m3uTunerPlugin } from '@eagle/m3u-tuner-plugin';
 import { hdHomeRunPlugin } from '@eagle/hdhome-run-plugin';
 import { createEagleControllers } from '@eagle/headless-ui';
@@ -22,7 +23,7 @@ import { TauriPort, createSettingsStore, eagleUrl } from './platform.js';
 import './app.css';
 
 /** Source-plugin composition for the MVP build (same set as the RN head). */
-export const MVP_PLUGINS: SourcePlugin[] = [jellyfinPlugin, m3uTunerPlugin, hdHomeRunPlugin];
+export const MVP_PLUGINS: SourcePlugin[] = [jellyfinPlugin, jellyfinVideoPlugin, m3uTunerPlugin, hdHomeRunPlugin];
 
 type Route = 'list' | 'player' | 'settings';
 

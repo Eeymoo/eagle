@@ -1,0 +1,32 @@
+{
+  "name": "@eagle/jellyfin-video-plugin",
+  "version": "0.1.0",
+  "description": "Eagle Jellyfin video-mode source plugin — movies & episodes as on-demand channels",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    }
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@eagle/core": "workspace:*",
+    "@eagle/jellyfin-plugin": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.2",
+    "vitest": "3.2.4"
+  },
+  "react-native": "./src/index.ts"
+}

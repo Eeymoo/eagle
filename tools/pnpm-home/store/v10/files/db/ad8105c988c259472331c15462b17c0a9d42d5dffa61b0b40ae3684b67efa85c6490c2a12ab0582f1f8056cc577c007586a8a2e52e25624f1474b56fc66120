@@ -1,0 +1,64 @@
+import type { Integration } from '@sentry/core';
+import { TURBO_MODULES_AGGREGATE_OP, TURBO_MODULES_AGGREGATE_ORIGIN } from './turboModuleContextFlush';
+export { TURBO_MODULES_AGGREGATE_OP, TURBO_MODULES_AGGREGATE_ORIGIN };
+export declare const INTEGRATION_NAME = "TurboModuleContext";
+/** Default flush cadence for the periodic timer, in milliseconds. */
+export declare const DEFAULT_AGGREGATE_FLUSH_INTERVAL_MS = 30000;
+/** Default duration above which an async TurboModule call becomes a breadcrumb. */
+export declare const DEFAULT_SLOW_CALL_THRESHOLD_MS = 500;
+export declare const DEFAULT_MAX_TOP_MODULES_PER_SPAN = 16;
+export declare const TURBO_MODULE_BREADCRUMB_CATEGORY = "native.turbo_module";
+/** Cap so abandoned (never-settling) promises can't pin `WindowState` forever. */
+export declare const MAX_PENDING_CALL_WINDOWS = 1024;
+/** Cap so sampled-out transactions can't leak their buffered attributes. */
+export declare const MAX_PENDING_SPAN_ATTRIBUTES = 256;
+export interface TurboModuleContextOptions {
+    /** Additional TurboModules to wrap. `RNSentry` is always tracked. */
+    modules?: Array<{
+        name: string;
+        module: object | null | undefined;
+        skipMethods?: ReadonlyArray<string>;
+    }>;
+    /** Per-(module, method, kind) counters, flushed on transaction finish and on a periodic timer. Default: `true`. */
+    enableAggregateStats?: boolean;
+    /** Periodic aggregate flush interval, ms. `0` disables the periodic timer. Default: `30000`. */
+    aggregateFlushIntervalMs?: number;
+    /**
+     * Modules opted out of the aggregate (still wrapped for crash context).
+     * Default `['RNSentry']` — the SDK's own transport calls would otherwise
+     * pollute the signal and self-re-arm the periodic timer indefinitely.
+     */
+    ignoreTurboModules?: ReadonlyArray<string>;
+    /** Per-`(module, method)` breakdown on root-span `spanEnd`. Default: `true`. */
+    enableSpanAttribution?: boolean;
+    /** Async-call duration above which a `native.turbo_module` breadcrumb fires. `0` disables. Default: `500`. */
+    slowCallThresholdMs?: number;
+    /** Cap on per-`(module, method)` rows attributed to a single span. Default: `16`. */
+    maxTopModulesPerSpan?: number;
+    /**
+     * On Old Architecture, auto-wrap registered `NativeModules.*`. Default: `false`.
+     *
+     * Opt-in while we gather feedback: unlike the New Architecture path, which only
+     * sees modules the app actually imports, this instruments every registered
+     * bridge module, including third-party ones.
+     *
+     * Lazily-exposed modules stay lazy — they are wrapped on first access rather than
+     * initialised during `Sentry.init`.
+     */
+    enableLegacyNativeModules?: boolean;
+    /**
+     * Additional modules to skip in the legacy auto-wrap. `RNSentry` and hot React
+     * Native infrastructure (`Timing`, `UIManager`, and the animated modules) are
+     * always skipped; pass them via `modules` to instrument them deliberately.
+     */
+    legacyModulesSkip?: ReadonlyArray<string>;
+    /** Per-module method skips for the legacy auto-wrap. */
+    legacyModulesSkipMethods?: Readonly<Record<string, ReadonlyArray<string>>>;
+}
+/**
+ * Attributes TurboModule invocations to the Sentry scope for crash context,
+ * aggregates per-`(module, method, kind)` counters into transaction events,
+ * attaches a per-span breakdown on `spanEnd`, and emits slow-call breadcrumbs.
+ */
+export declare const turboModuleContextIntegration: (options?: TurboModuleContextOptions) => Integration;
+//# sourceMappingURL=turboModuleContext.d.ts.map

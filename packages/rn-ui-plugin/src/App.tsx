@@ -17,6 +17,7 @@ import * as Application from 'expo-application';
 import { EagleCore } from '@eagle/core';
 import type { Channel, SourcePlugin } from '@eagle/core';
 import { jellyfinPlugin } from '@eagle/jellyfin-plugin';
+import { jellyfinVideoPlugin } from '@eagle/jellyfin-video-plugin';
 import { m3uTunerPlugin } from '@eagle/m3u-tuner-plugin';
 import { hdHomeRunPlugin } from '@eagle/hdhome-run-plugin';
 import { createEagleControllers } from '@eagle/headless-ui';
@@ -27,7 +28,7 @@ import { PlayerScreen } from '@eagle/ui-screens';
 import { SettingsScreen } from '@eagle/ui-screens';
 
 /** Source-plugin composition for the MVP build. */
-export const MVP_PLUGINS: SourcePlugin[] = [jellyfinPlugin, m3uTunerPlugin, hdHomeRunPlugin];
+export const MVP_PLUGINS: SourcePlugin[] = [jellyfinPlugin, jellyfinVideoPlugin, m3uTunerPlugin, hdHomeRunPlugin];
 
 /**
  * Boot-stage breadcrumbs: if the app crashes at startup, GlitchTip shows the

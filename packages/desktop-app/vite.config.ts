@@ -18,9 +18,15 @@ function eagleProxy(): Plugin {
     name: 'eagle-cors-proxy',
     configureServer(server) {
       server.middlewares.use(PREFIX, (req, res, next) => {
-        // connect already decodes the path: req.url is "/https://…" (the
-        // browser's %3A%2F%2F encoding arrives decoded here).
-        const raw = req.url ? decodeURIComponent(req.url.slice(1)) : '';
+        // connect already decodes the path: req.url is "/https://…". Clients
+        // may still percent-encode (legacy encodeURIComponent form) — decode
+        // best-effort; raw URLs pass through unchanged.
+        let raw = req.url?.slice(1) ?? '';
+        try {
+          raw = decodeURIComponent(raw);
+        } catch {
+          /* malformed % sequence — use as-is */
+        }
         const target = raw;
         if (!/^https?:\/\//i.test(target)) {
           res.statusCode = 400;
@@ -107,6 +113,7 @@ export default defineConfig({
       // sources (mirrors metro's `react-native` field) so lib never bites.
       { find: /^@eagle\/core$/, replacement: pkgs('core') },
       { find: /^@eagle\/jellyfin-plugin$/, replacement: pkgs('jellyfin-plugin') },
+      { find: /^@eagle\/jellyfin-video-plugin$/, replacement: pkgs('jellyfin-video-plugin') },
       { find: /^@eagle\/m3u-tuner-plugin$/, replacement: pkgs('m3u-tuner-plugin') },
       { find: /^@eagle\/hdhome-run-plugin$/, replacement: pkgs('hdhome-run-plugin') },
       { find: /^@eagle\/ui-screens$/, replacement: pkgs('ui-screens') },
@@ -121,6 +128,7 @@ export default defineConfig({
       '@eagle/ui-screens',
       '@eagle/core',
       '@eagle/jellyfin-plugin',
+      '@eagle/jellyfin-video-plugin',
       '@eagle/m3u-tuner-plugin',
       '@eagle/hdhome-run-plugin',
     ],

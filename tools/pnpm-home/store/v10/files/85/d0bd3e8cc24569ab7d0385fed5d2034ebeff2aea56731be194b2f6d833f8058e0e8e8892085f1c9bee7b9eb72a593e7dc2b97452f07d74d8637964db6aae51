@@ -1,0 +1,92 @@
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
+import { debug, getClient } from '@sentry/core';
+import * as React from 'react';
+import { getNavigationContainerComponent } from './reactNavigationImport';
+import { getReactNavigationIntegration } from './tracing/reactnavigation';
+import { registerFeatureMarker } from './utils/featureMarkers';
+export const NAVIGATION_CONTAINER_INTEGRATION_NAME = 'NavigationContainer';
+let _warnedMissing = false;
+let _warnedNoClient = false;
+let _warnedNoIntegration = false;
+/**
+ * Drop-in replacement for `NavigationContainer` from `@react-navigation/native`
+ * that automatically wires up Sentry's `reactNavigationIntegration`.
+ *
+ * Sentry registers the navigation container before the user-provided `onReady`
+ * callback fires, so navigation spans are captured from the first route.
+ *
+ * If `@react-navigation/native` is not installed, children are rendered directly
+ * and `onReady` is not called.
+ *
+ * @example
+ * ```jsx
+ * <Sentry.NavigationContainer>
+ *   <Stack.Navigator>
+ *     ...
+ *   </Stack.Navigator>
+ * </Sentry.NavigationContainer>
+ * ```
+ */
+export const NavigationContainer = React.forwardRef((props, forwardedRef) => {
+    const { onReady: userOnReady } = props, restProps = __rest(props, ["onReady"]);
+    const RealNavigationContainer = getNavigationContainerComponent();
+    const internalRef = React.useRef(null);
+    const mergedRef = React.useCallback((instance) => {
+        internalRef.current = instance;
+        if (typeof forwardedRef === 'function') {
+            forwardedRef(instance);
+        }
+        else if (forwardedRef != null) {
+            forwardedRef.current = instance;
+        }
+    }, [forwardedRef]);
+    React.useEffect(() => {
+        registerFeatureMarker(NAVIGATION_CONTAINER_INTEGRATION_NAME);
+    }, []);
+    const onReady = React.useCallback(() => {
+        try {
+            const client = getClient();
+            if (!client) {
+                if (!_warnedNoClient) {
+                    _warnedNoClient = true;
+                    debug.warn('[Sentry] NavigationContainer: Sentry is not initialized. Call Sentry.init() before mounting NavigationContainer.');
+                }
+            }
+            else {
+                const integration = getReactNavigationIntegration(client);
+                if (integration) {
+                    integration.registerNavigationContainer(internalRef);
+                }
+                else if (!_warnedNoIntegration) {
+                    _warnedNoIntegration = true;
+                    debug.log('[Sentry] NavigationContainer: reactNavigationIntegration is not registered. Navigation spans will not be captured.');
+                }
+            }
+        }
+        catch (_a) {
+            // SDK failures must never break the host app
+        }
+        if (typeof userOnReady === 'function') {
+            userOnReady();
+        }
+    }, [userOnReady]);
+    if (!RealNavigationContainer) {
+        if (!_warnedMissing) {
+            _warnedMissing = true;
+            debug.warn('[Sentry] NavigationContainer requires @react-navigation/native to be installed.');
+        }
+        return React.createElement(React.Fragment, null, restProps.children);
+    }
+    return React.createElement(RealNavigationContainer, Object.assign({}, restProps, { ref: mergedRef, onReady: onReady }));
+});
+//# sourceMappingURL=NavigationContainer.js.map

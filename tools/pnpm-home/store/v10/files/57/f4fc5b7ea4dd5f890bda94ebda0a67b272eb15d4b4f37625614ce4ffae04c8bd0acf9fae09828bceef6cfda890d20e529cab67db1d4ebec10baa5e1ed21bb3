@@ -1,0 +1,185 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.withSentryIOS = void 0;
+exports.modifyExistingXcodeBuildScript = modifyExistingXcodeBuildScript;
+exports.addSentryWithBundledScriptsToBundleShellScript = addSentryWithBundledScriptsToBundleShellScript;
+exports.addDisableAutoUploadToExistingScript = addDisableAutoUploadToExistingScript;
+exports.removeDisableAutoUploadFromExistingScript = removeDisableAutoUploadFromExistingScript;
+exports.modifyAppDelegate = modifyAppDelegate;
+const config_plugins_1 = require("expo/config-plugins");
+const path = __importStar(require("path"));
+const logger_1 = require("./logger");
+const utils_1 = require("./utils");
+const SENTRY_REACT_NATIVE_XCODE_PATH = "`\"$NODE_BINARY\" --print \"require('path').dirname(require.resolve('@sentry/react-native/package.json')) + '/scripts/sentry-xcode.sh'\"`";
+const SENTRY_REACT_NATIVE_XCODE_DEBUG_FILES_PATH = "`${NODE_BINARY:-node} --print \"require('path').dirname(require.resolve('@sentry/react-native/package.json')) + '/scripts/sentry-xcode-debug-files.sh'\"`";
+const SENTRY_DISABLE_AUTO_UPLOAD_EXPORT = 'export SENTRY_DISABLE_AUTO_UPLOAD=true';
+const withSentryIOS = (config, { sentryProperties, useNativeInit = false, disableAutoUpload = false }) => {
+    const xcodeProjectCfg = (0, config_plugins_1.withXcodeProject)(config, config => {
+        const xcodeProject = config.modResults;
+        const sentryBuildPhase = xcodeProject.pbxItemByComment('Upload Debug Symbols to Sentry', 'PBXShellScriptBuildPhase');
+        if (!sentryBuildPhase) {
+            const debugFilesScript = disableAutoUpload
+                ? `${SENTRY_DISABLE_AUTO_UPLOAD_EXPORT}\n/bin/sh ${SENTRY_REACT_NATIVE_XCODE_DEBUG_FILES_PATH}`
+                : `/bin/sh ${SENTRY_REACT_NATIVE_XCODE_DEBUG_FILES_PATH}`;
+            xcodeProject.addBuildPhase([], 'PBXShellScriptBuildPhase', 'Upload Debug Symbols to Sentry', null, {
+                shellPath: '/bin/sh',
+                shellScript: debugFilesScript,
+            });
+        }
+        else if (disableAutoUpload) {
+            addDisableAutoUploadToExistingScript(sentryBuildPhase);
+        }
+        else {
+            removeDisableAutoUploadFromExistingScript(sentryBuildPhase);
+        }
+        const bundleReactNativePhase = xcodeProject.pbxItemByComment('Bundle React Native code and images', 'PBXShellScriptBuildPhase');
+        modifyExistingXcodeBuildScript(bundleReactNativePhase, disableAutoUpload);
+        return config;
+    });
+    const appDelegateCfc = useNativeInit ? modifyAppDelegate(xcodeProjectCfg) : xcodeProjectCfg;
+    return (0, config_plugins_1.withDangerousMod)(appDelegateCfc, [
+        'ios',
+        config => {
+            (0, utils_1.writeSentryPropertiesTo)(path.resolve(config.modRequest.projectRoot, 'ios'), sentryProperties);
+            return config;
+        },
+    ]);
+};
+exports.withSentryIOS = withSentryIOS;
+function modifyExistingXcodeBuildScript(script, disableAutoUpload = false) {
+    if (!script.shellScript.match(/(packager|scripts)\/react-native-xcode\.sh\b/)) {
+        (0, logger_1.warnOnce)(`'react-native-xcode.sh' not found in 'Bundle React Native code and images'.
+Please open a bug report at https://github.com/getsentry/sentry-react-native`);
+        return;
+    }
+    if (script.shellScript.includes('sentry-xcode.sh')) {
+        if (disableAutoUpload) {
+            addDisableAutoUploadToExistingScript(script);
+        }
+        else {
+            removeDisableAutoUploadFromExistingScript(script);
+        }
+        return;
+    }
+    if (script.shellScript.includes('@sentry')) {
+        (0, logger_1.warnOnce)(`Outdated or custom Sentry script found in 'Bundle React Native code and images'.
+Regenerate the native project to use the latest script.
+Run npx expo prebuild --clean`);
+        return;
+    }
+    const code = JSON.parse(script.shellScript);
+    script.shellScript = JSON.stringify(addSentryWithBundledScriptsToBundleShellScript(code, disableAutoUpload));
+}
+function addSentryWithBundledScriptsToBundleShellScript(script, disableAutoUpload = false) {
+    const disableAutoUploadExport = disableAutoUpload ? `${SENTRY_DISABLE_AUTO_UPLOAD_EXPORT}\n` : '';
+    return script.replace(/^.*?(packager|scripts)\/react-native-xcode\.sh\s*(\\'\\\\")?/m, (match) => `${disableAutoUploadExport}/bin/sh ${SENTRY_REACT_NATIVE_XCODE_PATH} ${match}`);
+}
+function addDisableAutoUploadToExistingScript(script) {
+    if (script.shellScript.includes('SENTRY_DISABLE_AUTO_UPLOAD')) {
+        return;
+    }
+    try {
+        const code = JSON.parse(script.shellScript);
+        script.shellScript = JSON.stringify(insertExportAfterDelimiter(code));
+    }
+    catch {
+        script.shellScript = `${SENTRY_DISABLE_AUTO_UPLOAD_EXPORT}\n${script.shellScript}`;
+    }
+}
+function insertExportAfterDelimiter(script) {
+    if (script.startsWith('"')) {
+        const rest = script.slice(1).replace(/^\n/, '');
+        return `"\n${SENTRY_DISABLE_AUTO_UPLOAD_EXPORT}\n${rest}`;
+    }
+    return `${SENTRY_DISABLE_AUTO_UPLOAD_EXPORT}\n${script}`;
+}
+function removeDisableAutoUploadFromExistingScript(script) {
+    if (!script.shellScript.includes('SENTRY_DISABLE_AUTO_UPLOAD')) {
+        return;
+    }
+    try {
+        const code = JSON.parse(script.shellScript);
+        script.shellScript = JSON.stringify(code.replace(/^export SENTRY_DISABLE_AUTO_UPLOAD=true\n?/m, ''));
+    }
+    catch {
+        script.shellScript = script.shellScript.replace(/^export SENTRY_DISABLE_AUTO_UPLOAD=true\n?/m, '');
+    }
+}
+function modifyAppDelegate(config) {
+    return (0, config_plugins_1.withAppDelegate)(config, async (config) => {
+        if (!config.modResults?.path) {
+            (0, logger_1.warnOnce)("Can't add 'RNSentrySDK.start()' to the iOS AppDelegate, because the file was not found.");
+            return config;
+        }
+        const fileName = path.basename(config.modResults.path);
+        if (config.modResults.language === 'swift') {
+            if (config.modResults.contents.includes('RNSentrySDK.start()')) {
+                (0, logger_1.warnOnce)(`Your '${fileName}' already contains 'RNSentrySDK.start()'.`);
+                return config;
+            }
+            // Add RNSentrySDK.start() at the beginning of application method
+            const originalContents = config.modResults.contents;
+            config.modResults.contents = config.modResults.contents.replace(/(func application\([^)]*\) -> Bool \{)\s*\n(\s*)/s, '$1\n$2RNSentrySDK.start()\n$2');
+            if (config.modResults.contents === originalContents) {
+                (0, logger_1.warnOnce)(`Failed to insert 'RNSentrySDK.start()' in '${fileName}'.`);
+            }
+            else if (!config.modResults.contents.includes('import RNSentry')) {
+                // Insert import statement after the first import (works for both UIKit and Expo imports)
+                config.modResults.contents = config.modResults.contents.replace(/(import \S+\n)/, '$1import RNSentry\n');
+            }
+        }
+        else if (['objcpp', 'objc'].includes(config.modResults.language)) {
+            if (config.modResults.contents.includes('[RNSentrySDK start]')) {
+                (0, logger_1.warnOnce)(`Your '${fileName}' already contains '[RNSentrySDK start]'.`);
+                return config;
+            }
+            // Add [RNSentrySDK start] at the beginning of application:didFinishLaunchingWithOptions method
+            const originalContents = config.modResults.contents;
+            config.modResults.contents = config.modResults.contents.replace(/(- \(BOOL\)application:[\s\S]*?didFinishLaunchingWithOptions:[\s\S]*?\{\n)(\s*)/s, '$1$2[RNSentrySDK start];\n$2');
+            if (config.modResults.contents === originalContents) {
+                (0, logger_1.warnOnce)(`Failed to insert '[RNSentrySDK start]' in '${fileName}.`);
+            }
+            else if (!config.modResults.contents.includes('#import <RNSentry/RNSentry.h>')) {
+                // Add import after AppDelegate.h
+                config.modResults.contents = config.modResults.contents.replace(/(#import "AppDelegate.h"\n)/, '$1#import <RNSentry/RNSentry.h>\n');
+            }
+        }
+        else {
+            (0, logger_1.warnOnce)(`Unsupported language '${config.modResults.language}' detected in '${fileName}', the native code won't be updated.`);
+        }
+        return config;
+    });
+}

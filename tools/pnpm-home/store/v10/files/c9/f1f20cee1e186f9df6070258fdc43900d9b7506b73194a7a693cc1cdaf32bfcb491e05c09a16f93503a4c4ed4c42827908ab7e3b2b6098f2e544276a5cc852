@@ -1,0 +1,55 @@
+/**
+ * Shared helpers for reading Expo Router's internal router store.
+ *
+ * Used by:
+ *  - {@link expoRouterIntegration} to attach the current route to the idle
+ *    navigation span via {@link RouteOverride}.
+ *  - {@link wrapExpoRouterErrorBoundary} to attach the current route to errors
+ *    surfaced through Expo Router's per-route `ErrorBoundary`.
+ */
+export interface ExpoRouterNavigationRef {
+    current: unknown | null;
+}
+export interface ExpoRouterUrlObject {
+    unstable_globalHref?: string;
+    pathname?: string;
+    pathnameWithParams?: string;
+    params?: Record<string, unknown>;
+    segments?: string[];
+}
+export interface ExpoRouterStore {
+    navigationRef?: ExpoRouterNavigationRef;
+    getRouteInfo?: () => ExpoRouterUrlObject;
+}
+export interface NormalizedExpoRouterRouteInfo {
+    /**
+     * Templated pathname with grouping segments (`(tabs)`) removed. Safe to send
+     * regardless of `sendDefaultPii`. Examples:
+     *   ['(tabs)', 'profile', '[id]'] -> '/profile/[id]'
+     *   ['posts', '[...slug]']        -> '/posts/[...slug]'
+     *   []                            -> '/'
+     */
+    templatedPath: string;
+    /** Concrete pathname (may contain user identifiers). Caller decides PII handling. */
+    pathname?: string;
+    /** Concrete pathname including query/params (may contain PII). */
+    pathnameWithParams?: string;
+    params?: Record<string, unknown>;
+    segments?: string[];
+}
+/**
+ * Returns Expo Router's internal router store, or `null` if `expo-router` is
+ * not installed or the build does not expose the expected module path.
+ */
+export declare function tryGetExpoRouterStore(): ExpoRouterStore | null;
+/**
+ * Builds a templated pathname from Expo Router's `segments`. Grouping segments
+ * (e.g. `(tabs)`, `(auth)`) are stripped because they do not appear in the URL.
+ */
+export declare function buildExpoRouterTemplatedPath(segments: string[] | undefined): string;
+/**
+ * Reads the current route from Expo Router's store and normalizes it. Returns
+ * `undefined` if the store is not reachable or `getRouteInfo` throws.
+ */
+export declare function getCurrentExpoRouterRouteInfo(): NormalizedExpoRouterRouteInfo | undefined;
+//# sourceMappingURL=expoRouterStore.d.ts.map

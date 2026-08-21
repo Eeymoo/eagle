@@ -1,7 +1,7 @@
 {
   "name": "@eagle/rn-ui-plugin",
   "version": "0.1.0",
-  "description": "Eagle RN head — composition root + platform bridge; screens shared via @eagle/ui-screens",
+  "description": "Eagle RN head \u2014 composition root + platform bridge; screens shared via @eagle/ui-screens",
   "license": "MIT",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -11,15 +11,16 @@
   },
   "dependencies": {
     "@eagle/core": "workspace:*",
-    "@eagle/jellyfin-plugin": "workspace:*",
-    "@eagle/m3u-tuner-plugin": "workspace:*",
+    "@eagle/design-tokens": "workspace:*",
     "@eagle/hdhome-run-plugin": "workspace:*",
     "@eagle/headless-ui": "workspace:*",
-    "@eagle/design-tokens": "workspace:*",
+    "@eagle/jellyfin-plugin": "workspace:*",
+    "@eagle/jellyfin-video-plugin": "workspace:*",
+    "@eagle/m3u-tuner-plugin": "workspace:*",
+    "@eagle/ui-screens": "workspace:*",
     "expo-application": "~7.0.8",
-    "react-native-safe-area-context": "5.6.0",
     "expo-screen-orientation": "~9.0.9",
-    "@eagle/ui-screens": "workspace:*"
+    "react-native-safe-area-context": "5.6.0"
   },
   "peerDependencies": {
     "@react-native-async-storage/async-storage": "^2.1.0",

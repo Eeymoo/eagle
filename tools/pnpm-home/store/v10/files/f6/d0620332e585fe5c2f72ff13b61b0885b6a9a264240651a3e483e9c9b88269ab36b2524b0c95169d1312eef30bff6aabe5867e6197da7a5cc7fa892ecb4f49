@@ -1,0 +1,121 @@
+import { addBreadcrumb, addExceptionMechanism, captureException, debug, getActiveSpan, getClient, getRootSpan, SPAN_STATUS_ERROR, spanToJSON, } from '@sentry/core';
+import * as React from 'react';
+import { registerFeatureMarker } from '../utils/featureMarkers';
+import { getCurrentExpoRouterRouteInfo } from './expoRouterStore';
+export const EXPO_ROUTER_ERROR_BOUNDARY_INTEGRATION_NAME = 'ExpoRouterErrorBoundary';
+/**
+ * Errors we have already reported. Module-scoped (rather than a per-instance
+ * `useRef`) so that an unmount → remount cycle with the same error instance —
+ * which can happen when a parent caches the error or React re-creates the
+ * boundary — does not produce a duplicate event. Using a `WeakSet` lets the
+ * entries be garbage-collected once nothing else references the error.
+ */
+const reportedErrors = new WeakSet();
+/**
+ * Wraps Expo Router's per-route `ErrorBoundary` so that the SDK captures
+ * errors that hit the boundary instead of relying on the user's global error
+ * handler.
+ *
+ * Expo Router renders the boundary exported from a route file
+ * (`export { ErrorBoundary } from 'expo-router'`) when a component throws
+ * during render. Without this wrapper, Sentry only sees the error if it also
+ * reaches `ErrorUtils` — which it often does not, because React swallows the
+ * error once a boundary handles it.
+ *
+ * For each new `error` instance the wrapper:
+ *  - Captures the error to Sentry with `route.name`, `route.path`, and
+ *    `route.params` attached, gated by `sendDefaultPii` for concrete fields.
+ *  - Tags the active idle navigation span (and its root) with
+ *    `SPAN_STATUS_ERROR` so the navigation transaction reflects the failure.
+ *  - Adds a breadcrumb describing the boundary render.
+ *
+ * @example
+ * ```ts
+ * // app/_layout.tsx
+ * import { ErrorBoundary as ExpoErrorBoundary } from 'expo-router';
+ * import * as Sentry from '@sentry/react-native';
+ *
+ * export const ErrorBoundary = Sentry.wrapExpoRouterErrorBoundary(ExpoErrorBoundary);
+ * ```
+ */
+export function wrapExpoRouterErrorBoundary(OriginalErrorBoundary) {
+    // Register at wrap-call time (module evaluation) so the marker fires as soon
+    // as the user's route file loads, not only when Expo Router actually renders
+    // the boundary on an error. No-op if `Sentry.init()` has not run yet; route
+    // files load lazily during navigation, so init has typically completed by
+    // then.
+    registerFeatureMarker(EXPO_ROUTER_ERROR_BOUNDARY_INTEGRATION_NAME);
+    const Wrapped = props => {
+        // Reporting is intentionally done in `useEffect` (commit phase) rather than
+        // during render: render must be pure, and in Concurrent Mode an in-progress
+        // render can be discarded — we only want to report errors that React
+        // actually commits to the screen. Dedup is module-scoped so it survives
+        // remounts of the boundary with the same error instance.
+        const { error } = props;
+        React.useEffect(() => {
+            if (!error || reportedErrors.has(error)) {
+                return;
+            }
+            // Defensive: a failure inside Sentry instrumentation must never prevent
+            // Expo Router's fallback UI from rendering or break the host app. We
+            // only mark the error as reported on success, so a transient failure
+            // does not permanently suppress the capture for this error instance.
+            try {
+                reportRouterBoundaryError(error);
+                reportedErrors.add(error);
+            }
+            catch (e) {
+                debug.error(`[wrapExpoRouterErrorBoundary] Failed to report boundary error: ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }, [error]);
+        return React.createElement(OriginalErrorBoundary, Object.assign({}, props));
+    };
+    Wrapped.displayName = `wrapExpoRouterErrorBoundary(${OriginalErrorBoundary.displayName || OriginalErrorBoundary.name || 'ErrorBoundary'})`;
+    return Wrapped;
+}
+function reportRouterBoundaryError(error) {
+    var _a, _b, _c, _d;
+    const sendPii = (_c = (_b = (_a = getClient()) === null || _a === void 0 ? void 0 : _a.getOptions()) === null || _b === void 0 ? void 0 : _b.sendDefaultPii) !== null && _c !== void 0 ? _c : false;
+    const route = getCurrentExpoRouterRouteInfo();
+    const templatedPath = route === null || route === void 0 ? void 0 : route.templatedPath;
+    // `templatedPath` (e.g. `/users/[id]`) is structural and safe; concrete path
+    // (e.g. `/users/42`) and `params` may contain identifiers and are PII-gated.
+    const routeName = templatedPath !== null && templatedPath !== void 0 ? templatedPath : 'unknown';
+    const concretePath = sendPii ? ((_d = route === null || route === void 0 ? void 0 : route.pathnameWithParams) !== null && _d !== void 0 ? _d : route === null || route === void 0 ? void 0 : route.pathname) : undefined;
+    addBreadcrumb({
+        category: 'expo-router.error_boundary',
+        type: 'error',
+        level: 'error',
+        message: `Expo Router ErrorBoundary rendered for ${routeName}`,
+        data: Object.assign({ 'route.name': routeName }, (concretePath ? { 'route.path': concretePath } : undefined)),
+    });
+    markActiveNavigationSpanErrored();
+    captureException(error, (scope) => {
+        scope.setTag('expo_router.error_boundary', 'true');
+        scope.setContext('route', Object.assign(Object.assign(Object.assign({ name: routeName }, (concretePath ? { path: concretePath } : undefined)), (sendPii && (route === null || route === void 0 ? void 0 : route.params) ? { params: route.params } : undefined)), ((route === null || route === void 0 ? void 0 : route.segments) ? { segments: route.segments } : undefined)));
+        scope.addEventProcessor(event => {
+            addExceptionMechanism(event, { type: 'expo_router_error_boundary', handled: true });
+            return event;
+        });
+        return scope;
+    });
+}
+/**
+ * If an idle navigation span (or any child) is still open when the boundary
+ * renders, mark its root as errored so the resulting transaction reflects the
+ * navigation failure. Scoped to navigation roots so that a user-started
+ * custom span is not retroactively flipped to errored. No-op otherwise.
+ */
+function markActiveNavigationSpanErrored() {
+    const active = getActiveSpan();
+    if (!active) {
+        return;
+    }
+    const root = getRootSpan(active);
+    const origin = spanToJSON(root).origin;
+    if (typeof origin !== 'string' || !origin.startsWith('auto.navigation.')) {
+        return;
+    }
+    root.setStatus({ code: SPAN_STATUS_ERROR, message: 'expo_router_error_boundary' });
+}
+//# sourceMappingURL=expoRouterErrorBoundary.js.map

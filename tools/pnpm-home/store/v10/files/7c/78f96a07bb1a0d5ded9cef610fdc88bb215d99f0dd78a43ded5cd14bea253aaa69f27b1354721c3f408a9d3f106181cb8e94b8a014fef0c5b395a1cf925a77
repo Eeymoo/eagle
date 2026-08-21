@@ -1,0 +1,147 @@
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
+import { lastEventId } from '@sentry/core';
+import { ErrorBoundary } from '@sentry/react';
+import * as React from 'react';
+import { subscribeGlobalError } from './integrations/globalErrorBus';
+import { registerFeatureMarker } from './utils/featureMarkers';
+export const GLOBAL_ERROR_BOUNDARY_INTEGRATION_NAME = 'GlobalErrorBoundary';
+/**
+ * An error boundary that also catches **non-rendering** fatal JS errors.
+ *
+ * In addition to the render-phase errors caught by `Sentry.ErrorBoundary`,
+ * this component renders the provided fallback when:
+ *
+ * - A fatal error is reported through React Native's `ErrorUtils` global
+ *   handler (event handlers, timers, native → JS bridge errors, …).
+ * - Optionally, non-fatal global errors (opt-in via
+ *   `includeNonFatalGlobalErrors`).
+ * - Optionally, unhandled promise rejections (opt-in via
+ *   `includeUnhandledRejections`).
+ *
+ * The Sentry error pipeline (capture → flush → mechanism tagging) runs in the
+ * integration before this component is notified, so the fallback UI surfaces
+ * an already-captured event and does not generate a duplicate.
+ *
+ * Intended usage is at the top of the component tree, typically just inside
+ * `Sentry.wrap()`:
+ *
+ * ```tsx
+ * <Sentry.GlobalErrorBoundary
+ *   fallback={({ error, resetError }) => (
+ *     <MyFallback error={error} onRetry={resetError} />
+ *   )}
+ * >
+ *   <App />
+ * </Sentry.GlobalErrorBoundary>
+ * ```
+ */
+export class GlobalErrorBoundary extends React.Component {
+    constructor() {
+        super(...arguments);
+        this.state = { globalError: null, globalEventId: '' };
+        this._latched = false;
+        this._onGlobalError = (event) => {
+            var _a, _b, _c, _d, _e;
+            // Keep the first error — once the fallback is up, subsequent errors
+            // shouldn't rewrite what the user is looking at. We use an instance flag
+            // instead of reading state because multiple publishes can fire in the
+            // same batch, before setState has flushed.
+            if (this._latched) {
+                return;
+            }
+            this._latched = true;
+            const error = (_a = event.error) !== null && _a !== void 0 ? _a : new Error('Unknown global error');
+            // Prefer the eventId threaded through the bus payload — it's the exact id
+            // returned by the capture call that produced this notification. Fall back
+            // to lastEventId() for older publishers that don't include it, then to ''
+            // to satisfy the type contract.
+            const eventId = (_c = (_b = event.eventId) !== null && _b !== void 0 ? _b : lastEventId()) !== null && _c !== void 0 ? _c : '';
+            this.setState({ globalError: error, globalEventId: eventId });
+            (_e = (_d = this.props).onError) === null || _e === void 0 ? void 0 : _e.call(_d, error, '', eventId);
+        };
+        this._resetFromFallback = () => {
+            var _a, _b;
+            const { globalError, globalEventId } = this.state;
+            this._latched = false;
+            this.setState({ globalError: null, globalEventId: '' });
+            (_b = (_a = this.props).onReset) === null || _b === void 0 ? void 0 : _b.call(_a, globalError, '', globalEventId);
+        };
+        this._onRenderBoundaryReset = (error, componentStack, eventId) => {
+            var _a, _b;
+            // Delegate to the user's onReset for render-phase resets; no internal
+            // state to clear on this path.
+            (_b = (_a = this.props).onReset) === null || _b === void 0 ? void 0 : _b.call(_a, error, componentStack, eventId);
+        };
+    }
+    componentDidMount() {
+        registerFeatureMarker(GLOBAL_ERROR_BOUNDARY_INTEGRATION_NAME);
+        this._subscribe();
+    }
+    componentWillUnmount() {
+        var _a;
+        (_a = this._unsubscribe) === null || _a === void 0 ? void 0 : _a.call(this);
+        this._unsubscribe = undefined;
+    }
+    componentDidUpdate(prevProps) {
+        var _a;
+        // Re-subscribe if the opt-in flags change so the filter stays accurate.
+        if (prevProps.includeNonFatalGlobalErrors !== this.props.includeNonFatalGlobalErrors ||
+            prevProps.includeUnhandledRejections !== this.props.includeUnhandledRejections) {
+            (_a = this._unsubscribe) === null || _a === void 0 ? void 0 : _a.call(this);
+            this._subscribe();
+        }
+    }
+    render() {
+        const { globalError, globalEventId } = this.state;
+        const _a = this.props, { children, fallback, 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        includeNonFatalGlobalErrors: _ignoredA, 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        includeUnhandledRejections: _ignoredB } = _a, forwarded = __rest(_a, ["children", "fallback", "includeNonFatalGlobalErrors", "includeUnhandledRejections"]);
+        // Global-error path: render the fallback directly. The error was already
+        // captured by the integration before the bus published it, so we must NOT
+        // route it through @sentry/react's ErrorBoundary — its componentDidCatch
+        // would call captureReactException and produce a duplicate Sentry event.
+        if (globalError !== null && globalError !== undefined) {
+            if (typeof fallback === 'function') {
+                return fallback({
+                    error: globalError,
+                    componentStack: '',
+                    eventId: globalEventId,
+                    resetError: this._resetFromFallback,
+                });
+            }
+            return fallback !== null && fallback !== void 0 ? fallback : null;
+        }
+        // Render-phase path: delegate to the upstream ErrorBoundary untouched.
+        return (React.createElement(ErrorBoundary, Object.assign({}, forwarded, { fallback: fallback, onReset: this._onRenderBoundaryReset }), children));
+    }
+    _subscribe() {
+        this._unsubscribe = subscribeGlobalError(this._onGlobalError, {
+            fatal: true,
+            nonFatal: !!this.props.includeNonFatalGlobalErrors,
+            unhandledRejection: !!this.props.includeUnhandledRejections,
+        });
+    }
+}
+/**
+ * HOC counterpart to {@link GlobalErrorBoundary}.
+ */
+export function withGlobalErrorBoundary(WrappedComponent, errorBoundaryOptions) {
+    const componentDisplayName = WrappedComponent.displayName || WrappedComponent.name || 'unknown';
+    const Wrapped = props => (React.createElement(GlobalErrorBoundary, Object.assign({}, errorBoundaryOptions),
+        React.createElement(WrappedComponent, Object.assign({}, props))));
+    Wrapped.displayName = `globalErrorBoundary(${componentDisplayName})`;
+    return Wrapped;
+}
+//# sourceMappingURL=GlobalErrorBoundary.js.map

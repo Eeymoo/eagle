@@ -1,0 +1,553 @@
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+import { debug, fill, getActiveSpan, getRootSpan, getSpanDescendants, SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SPAN_STATUS_ERROR, SPAN_STATUS_OK, spanToJSON, startInactiveSpan, timestampInSeconds, } from '@sentry/core';
+import * as React from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import { NATIVE } from '../wrapper';
+import { SPAN_ORIGIN_AUTO_UI_TIME_TO_DISPLAY, SPAN_ORIGIN_MANUAL_UI_TIME_TO_DISPLAY } from './origin';
+import { isAllReady, registerCheckpoint, subscribe, updateCheckpoint } from './timeToDisplayCoordinator';
+import { getRNSentryOnDrawReporter } from './timetodisplaynative';
+import { setSpanDurationAsMeasurement, setSpanDurationAsMeasurementOnSpan } from './utils';
+/**
+ * Timeout for fetching native frames
+ */
+const FETCH_FRAMES_TIMEOUT_MS = 2000;
+/**
+ * Maximum time to keep frame data in memory before cleaning up.
+ * Prevents memory leaks for spans that never complete.
+ */
+const FRAME_DATA_CLEANUP_TIMEOUT_MS = 60000;
+/**
+ * Flags of active spans with manual initial display.
+ */
+export const manualInitialDisplaySpans = new WeakMap();
+/**
+ * Flag full display called before initial display for an active span.
+ */
+const fullDisplayBeforeInitialDisplay = new WeakMap();
+/**
+ * Stores frame data for in-flight TTID/TTFD spans.
+ * Entries are automatically cleaned up when spans end (in captureEndFramesAndAttachToSpan finally block).
+ * As a safety mechanism, entries are also cleaned up after FRAME_DATA_CLEANUP_TIMEOUT_MS
+ * to prevent memory leaks for spans that never complete.
+ */
+const spanFrameDataMap = new Map();
+/**
+ * Component to measure time to initial display.
+ *
+ * Usage example:
+ *   <TimeToInitialDisplay ready={headerLoaded} />
+ *   <TimeToInitialDisplay ready={contentLoaded} />
+ */
+export function TimeToInitialDisplay(props) {
+    const activeSpan = getActiveSpan();
+    if (activeSpan) {
+        manualInitialDisplaySpans.set(activeSpan, true);
+    }
+    const parentSpanId = activeSpan && spanToJSON(activeSpan).span_id;
+    const initialDisplay = useCoordinatedDisplay('ttid', parentSpanId, props);
+    return (React.createElement(TimeToDisplay, { initialDisplay: initialDisplay, parentSpanId: parentSpanId }, props.children));
+}
+/**
+ * Component to measure time to full display.
+ *
+ * Usage example:
+ *   <TimeToFullDisplay ready={feedReady} />
+ *   <TimeToFullDisplay ready={sidebarReady} />
+ */
+export function TimeToFullDisplay(props) {
+    const activeSpan = getActiveSpan();
+    const parentSpanId = activeSpan && spanToJSON(activeSpan).span_id;
+    const fullDisplay = useCoordinatedDisplay('ttfd', parentSpanId, props);
+    return (React.createElement(TimeToDisplay, { fullDisplay: fullDisplay, parentSpanId: parentSpanId }, props.children));
+}
+let nextCheckpointId = 0;
+function useCoordinatedDisplay(kind, parentSpanId, props) {
+    const checkpointIdRef = useRef(null);
+    if (checkpointIdRef.current === null) {
+        checkpointIdRef.current = `cp-${nextCheckpointId++}`;
+    }
+    const checkpointId = checkpointIdRef.current;
+    const [, force] = useReducer((x) => x + 1, 0);
+    // useRegistry means we might use multiple TTID/TTFD components
+    const useRegistry = props.ready !== undefined;
+    const localReady = useRegistry ? !!props.ready : !!props.record;
+    // We do it this way because we don't want warnings being thrown on every re-render
+    const warnedRef = useRef(false);
+    useEffect(() => {
+        if (!__DEV__ || warnedRef.current)
+            return;
+        if (props.ready !== undefined && props.record !== undefined) {
+            warnedRef.current = true;
+            debug.warn('[TimeToDisplay] Both `ready` and `record` were provided — ignoring `record`.');
+        }
+        else if (props.record !== undefined) {
+            warnedRef.current = true;
+            debug.warn('[TimeToDisplay] The `record` prop is deprecated. Use `ready` instead.');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    useEffect(() => {
+        if (!parentSpanId || !useRegistry) {
+            return undefined;
+        }
+        return subscribe(kind, parentSpanId, force);
+    }, [kind, parentSpanId, useRegistry]);
+    // Tracks the span this component is currently registered under
+    const registeredSpanRef = useRef(null);
+    // Register on mount / when the active span changes
+    useEffect(() => {
+        if (!parentSpanId || !useRegistry) {
+            return undefined;
+        }
+        const unregister = registerCheckpoint(kind, parentSpanId, checkpointId, localReady);
+        registeredSpanRef.current = parentSpanId;
+        return () => {
+            registeredSpanRef.current = null;
+            unregister();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [kind, parentSpanId, useRegistry, checkpointId]);
+    // Propagate ready transitions to the registry
+    useEffect(() => {
+        if (!parentSpanId || !useRegistry) {
+            return;
+        }
+        updateCheckpoint(kind, parentSpanId, checkpointId, localReady);
+    }, [kind, parentSpanId, useRegistry, checkpointId, localReady]);
+    // Main logic for "readiness"
+    if (!parentSpanId) {
+        return false;
+    }
+    if (!useRegistry) {
+        return localReady;
+    }
+    if (registeredSpanRef.current !== parentSpanId) {
+        return false;
+    }
+    return isAllReady(kind, parentSpanId);
+}
+function TimeToDisplay(props) {
+    const RNSentryOnDrawReporter = getRNSentryOnDrawReporter();
+    return (React.createElement(React.Fragment, null,
+        React.createElement(RNSentryOnDrawReporter, { initialDisplay: props.initialDisplay, fullDisplay: props.fullDisplay, parentSpanId: props.parentSpanId }),
+        props.children));
+}
+/**
+ * Starts a new span for the initial display.
+ *
+ * Returns current span if already exists in the currently active span.
+ *
+ * @deprecated Use `<TimeToInitialDisplay record={boolean}/>` component instead.
+ */
+export function startTimeToInitialDisplaySpan(options) {
+    const activeSpan = getActiveSpan();
+    if (!activeSpan) {
+        debug.warn('[TimeToDisplay] No active span found to attach ui.load.initial_display to.');
+        return undefined;
+    }
+    const existingSpan = getSpanDescendants(activeSpan).find(span => spanToJSON(span).op === 'ui.load.initial_display');
+    if (existingSpan) {
+        debug.log('[TimeToDisplay] Found existing ui.load.initial_display span.');
+        return existingSpan;
+    }
+    const initialDisplaySpan = startInactiveSpan(Object.assign({ op: 'ui.load.initial_display', name: 'Time To Initial Display', startTime: spanToJSON(activeSpan).start_timestamp }, options));
+    if (!initialDisplaySpan) {
+        return undefined;
+    }
+    captureStartFramesForSpan(initialDisplaySpan.spanContext().spanId).catch(error => {
+        debug.log(`[TimeToDisplay] Failed to capture start frames for initial display span (${initialDisplaySpan.spanContext().spanId}).`, error);
+    });
+    if (options === null || options === void 0 ? void 0 : options.isAutoInstrumented) {
+        initialDisplaySpan.setAttribute(SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SPAN_ORIGIN_AUTO_UI_TIME_TO_DISPLAY);
+    }
+    else {
+        manualInitialDisplaySpans.set(activeSpan, true);
+        initialDisplaySpan.setAttribute(SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SPAN_ORIGIN_MANUAL_UI_TIME_TO_DISPLAY);
+    }
+    return initialDisplaySpan;
+}
+/**
+ * Starts a new span for the full display.
+ *
+ * Returns current span if already exists in the currently active span.
+ *
+ * @deprecated Use `<TimeToFullDisplay record={boolean}/>` component instead.
+ */
+export function startTimeToFullDisplaySpan(options = {
+    timeoutMs: 30000,
+}) {
+    const activeSpan = getActiveSpan();
+    if (!activeSpan) {
+        debug.warn('[TimeToDisplay] No active span found to attach ui.load.full_display to.');
+        return undefined;
+    }
+    const descendantSpans = getSpanDescendants(activeSpan);
+    const initialDisplaySpan = descendantSpans.find(span => spanToJSON(span).op === 'ui.load.initial_display');
+    if (!initialDisplaySpan) {
+        debug.warn('[TimeToDisplay] No initial display span found to attach ui.load.full_display to.');
+        return undefined;
+    }
+    const existingSpan = descendantSpans.find(span => spanToJSON(span).op === 'ui.load.full_display');
+    if (existingSpan) {
+        debug.log('[TimeToDisplay] Found existing ui.load.full_display span.');
+        return existingSpan;
+    }
+    const fullDisplaySpan = startInactiveSpan(Object.assign({ op: 'ui.load.full_display', name: 'Time To Full Display', startTime: spanToJSON(initialDisplaySpan).start_timestamp }, options));
+    if (!fullDisplaySpan) {
+        return undefined;
+    }
+    captureStartFramesForSpan(fullDisplaySpan.spanContext().spanId).catch(error => {
+        debug.log(`[TimeToDisplay] Failed to capture start frames for full display span (${fullDisplaySpan.spanContext().spanId}).`, error);
+    });
+    const timeout = setTimeout(() => {
+        if (spanToJSON(fullDisplaySpan).timestamp) {
+            return;
+        }
+        fullDisplaySpan.setStatus({ code: SPAN_STATUS_ERROR, message: 'deadline_exceeded' });
+        const fullDisplayEndTimestamp = spanToJSON(initialDisplaySpan).timestamp;
+        captureEndFramesAndAttachToSpan(fullDisplaySpan, fullDisplayEndTimestamp)
+            .then(() => {
+            debug.log(`[TimeToDisplay] span ${fullDisplaySpan.spanContext().spanId} updated with frame data.`);
+            fullDisplaySpan.end(fullDisplayEndTimestamp);
+            setSpanDurationAsMeasurement('time_to_full_display', fullDisplaySpan);
+        })
+            .catch(() => {
+            debug.warn(`[TimeToDisplay] Failed to capture end frames for full display span (${fullDisplaySpan.spanContext().spanId}).`);
+            fullDisplaySpan.end(spanToJSON(initialDisplaySpan).timestamp);
+            setSpanDurationAsMeasurement('time_to_full_display', fullDisplaySpan);
+        });
+        debug.warn('[TimeToDisplay] Full display span deadline_exceeded.');
+    }, options.timeoutMs);
+    fill(fullDisplaySpan, 'end', (originalEnd) => (endTimestamp) => {
+        clearTimeout(timeout);
+        originalEnd.call(fullDisplaySpan, endTimestamp);
+    });
+    if (options === null || options === void 0 ? void 0 : options.isAutoInstrumented) {
+        fullDisplaySpan.setAttribute(SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SPAN_ORIGIN_AUTO_UI_TIME_TO_DISPLAY);
+    }
+    else {
+        fullDisplaySpan.setAttribute(SEMANTIC_ATTRIBUTE_SENTRY_ORIGIN, SPAN_ORIGIN_MANUAL_UI_TIME_TO_DISPLAY);
+    }
+    return fullDisplaySpan;
+}
+/**
+ *
+ */
+export function updateInitialDisplaySpan(frameTimestampSeconds, { activeSpan = getActiveSpan(), span = startTimeToInitialDisplaySpan(), } = {}) {
+    if (!span) {
+        debug.warn('[TimeToDisplay] No span found or created, possibly performance is disabled.');
+        return;
+    }
+    if (!activeSpan) {
+        debug.warn('[TimeToDisplay] No active span found to attach ui.load.initial_display to.');
+        return;
+    }
+    if (spanToJSON(span).parent_span_id !== spanToJSON(activeSpan).span_id) {
+        debug.warn('[TimeToDisplay] Initial display span is not a child of current active span.');
+        return;
+    }
+    if (spanToJSON(span).timestamp) {
+        debug.warn(`[TimeToDisplay] ${spanToJSON(span).description} span already ended.`);
+        return;
+    }
+    captureEndFramesAndAttachToSpan(span, frameTimestampSeconds)
+        .then(() => {
+        span.end(frameTimestampSeconds);
+        span.setStatus({ code: SPAN_STATUS_OK });
+        debug.log(`[TimeToDisplay] ${spanToJSON(span).description} span updated with end timestamp and frame data.`);
+        if (fullDisplayBeforeInitialDisplay.has(activeSpan)) {
+            fullDisplayBeforeInitialDisplay.delete(activeSpan);
+            debug.log(`[TimeToDisplay] Updating full display with initial display (${span.spanContext().spanId}) end.`);
+            updateFullDisplaySpan(frameTimestampSeconds, span);
+        }
+        setSpanDurationAsMeasurementOnSpan('time_to_initial_display', span, activeSpan);
+    })
+        .catch(error => {
+        debug.log('[TimeToDisplay] Failed to capture frame data for initial display span.', error);
+        span.end(frameTimestampSeconds);
+        span.setStatus({ code: SPAN_STATUS_OK });
+        if (fullDisplayBeforeInitialDisplay.has(activeSpan)) {
+            fullDisplayBeforeInitialDisplay.delete(activeSpan);
+            debug.log(`[TimeToDisplay] Updating full display with initial display (${span.spanContext().spanId}) end.`);
+            updateFullDisplaySpan(frameTimestampSeconds, span);
+        }
+        setSpanDurationAsMeasurementOnSpan('time_to_initial_display', span, activeSpan);
+    });
+}
+/**
+ * Timestamps stored by the imperative `reportFullyDisplayed()` API.
+ * Keyed by the root span's span_id at call time.
+ * Consumed by `timeToDisplayIntegration.processEvent`.
+ */
+const _imperativeTtfdTimestamps = new Map();
+const MAX_IMPERATIVE_TTFD_ENTRIES = 50;
+/**
+ * Reports that the screen is fully displayed.
+ *
+ * Stores the current timestamp so the Time to Display integration
+ * can create the TTFD span (`ui.load.full_display`) during event processing.
+ * If called before TTID completes, the integration adjusts the TTFD
+ * timestamp to the TTID end (per the cross-SDK spec).
+ * Subsequent calls for the same span are ignored.
+ *
+ * This is the imperative equivalent of the `<TimeToFullDisplay>` component,
+ * matching the cross-SDK `Sentry.reportFullyDisplayed()` API.
+ */
+export function reportFullyDisplayed() {
+    const activeSpan = getActiveSpan();
+    if (!activeSpan) {
+        debug.warn('[TimeToDisplay] No active span found to report full display.');
+        return;
+    }
+    const rootSpan = getRootSpan(activeSpan);
+    const rootSpanId = spanToJSON(rootSpan).span_id;
+    if (rootSpanId && !_imperativeTtfdTimestamps.has(rootSpanId)) {
+        if (_imperativeTtfdTimestamps.size >= MAX_IMPERATIVE_TTFD_ENTRIES) {
+            const oldestKey = _imperativeTtfdTimestamps.keys().next().value;
+            if (oldestKey) {
+                _imperativeTtfdTimestamps.delete(oldestKey);
+            }
+        }
+        _imperativeTtfdTimestamps.set(rootSpanId, timestampInSeconds());
+    }
+}
+export function _popImperativeTtfdTimestamp(spanId) {
+    const ts = _imperativeTtfdTimestamps.get(spanId);
+    if (ts !== undefined) {
+        _imperativeTtfdTimestamps.delete(spanId);
+    }
+    return ts;
+}
+export function _resetImperativeTtfdTimestamps() {
+    _imperativeTtfdTimestamps.clear();
+}
+function updateFullDisplaySpan(frameTimestampSeconds, passedInitialDisplaySpan) {
+    const activeSpan = getActiveSpan();
+    if (!activeSpan) {
+        debug.warn('[TimeToDisplay] No active span found to update ui.load.full_display in.');
+        return;
+    }
+    const existingInitialDisplaySpan = passedInitialDisplaySpan ||
+        getSpanDescendants(activeSpan).find(span => spanToJSON(span).op === 'ui.load.initial_display');
+    const initialDisplayEndTimestamp = existingInitialDisplaySpan && spanToJSON(existingInitialDisplaySpan).timestamp;
+    if (!initialDisplayEndTimestamp) {
+        fullDisplayBeforeInitialDisplay.set(activeSpan, true);
+        debug.warn(`[TimeToDisplay] Full display called before initial display for active span (${activeSpan.spanContext().spanId}).`);
+        return;
+    }
+    const span = startTimeToFullDisplaySpan({
+        isAutoInstrumented: true,
+    });
+    if (!span) {
+        debug.warn('[TimeToDisplay] No TimeToFullDisplay span found or created, possibly performance is disabled.');
+        return;
+    }
+    const spanJSON = spanToJSON(span);
+    if (spanJSON.timestamp) {
+        debug.warn(`[TimeToDisplay] ${spanJSON.description} (${spanJSON.span_id}) span already ended.`);
+        return;
+    }
+    const endTimestamp = initialDisplayEndTimestamp > frameTimestampSeconds ? initialDisplayEndTimestamp : frameTimestampSeconds;
+    captureEndFramesAndAttachToSpan(span, endTimestamp)
+        .then(() => {
+        if (initialDisplayEndTimestamp > frameTimestampSeconds) {
+            debug.warn('[TimeToDisplay] Using initial display end. Full display end frame timestamp is before initial display end.');
+        }
+        span.end(endTimestamp);
+        span.setStatus({ code: SPAN_STATUS_OK });
+        debug.log(`[TimeToDisplay] span ${spanJSON.description} (${spanJSON.span_id}) updated with end timestamp and frame data.`);
+        setSpanDurationAsMeasurement('time_to_full_display', span);
+    })
+        .catch(error => {
+        debug.log('[TimeToDisplay] Failed to capture frame data for full display span.', error);
+        const endTimestamp = initialDisplayEndTimestamp > frameTimestampSeconds ? initialDisplayEndTimestamp : frameTimestampSeconds;
+        span.end(endTimestamp);
+        span.setStatus({ code: SPAN_STATUS_OK });
+        setSpanDurationAsMeasurement('time_to_full_display', span);
+    });
+}
+/**
+ * Creates a new TimeToFullDisplay component which triggers the full display recording every time the component is focused.
+ */
+export function createTimeToFullDisplay({ useFocusEffect, }) {
+    return createTimeToDisplay({ useFocusEffect, Component: TimeToFullDisplay });
+}
+/**
+ * Creates a new TimeToInitialDisplay component which triggers the initial display recording every time the component is focused.
+ */
+export function createTimeToInitialDisplay({ useFocusEffect, }) {
+    return createTimeToDisplay({ useFocusEffect, Component: TimeToInitialDisplay });
+}
+function createTimeToDisplay({ useFocusEffect, Component, }) {
+    const TimeToDisplayWrapper = (props) => {
+        const [focused, setFocused] = useState(false);
+        useFocusEffect(() => {
+            setFocused(true);
+            return () => {
+                setFocused(false);
+            };
+        });
+        // gate both legacy `record` and the new `ready` checkpoint on focus
+        //
+        // the idea here is that wrappers built via createTimeToFullDisplay/createTimeToInitialDisplay
+        // can only record TTID/TTFD on a focused screen
+        const gatedReady = focused ? props.ready : undefined;
+        const gatedRecord = focused ? props.record : undefined;
+        return React.createElement(Component, Object.assign({}, props, { record: gatedRecord, ready: gatedReady }));
+    };
+    TimeToDisplayWrapper.displayName = 'TimeToDisplayWrapper';
+    return TimeToDisplayWrapper;
+}
+/**
+ * Attaches frame data to a span's data object.
+ */
+function attachFrameDataToSpan(span, startFrames, endFrames) {
+    const totalFrames = endFrames.totalFrames - startFrames.totalFrames;
+    const slowFrames = endFrames.slowFrames - startFrames.slowFrames;
+    const frozenFrames = endFrames.frozenFrames - startFrames.frozenFrames;
+    if (totalFrames <= 0 && slowFrames <= 0 && frozenFrames <= 0) {
+        debug.warn(`[TimeToDisplay] Detected zero slow or frozen frames. Not adding measurements to span (${span.spanContext().spanId}).`);
+        return;
+    }
+    span.setAttribute('frames.total', totalFrames);
+    span.setAttribute('frames.slow', slowFrames);
+    span.setAttribute('frames.frozen', frozenFrames);
+    debug.log('[TimeToDisplay] Attached frame data to span.', {
+        spanId: span.spanContext().spanId,
+        frameData: {
+            total: totalFrames,
+            slow: slowFrames,
+            frozen: frozenFrames,
+        },
+    });
+}
+/**
+ * Captures start frames for a time-to-display span
+ */
+function captureStartFramesForSpan(spanId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!NATIVE.enableNative) {
+            return;
+        }
+        try {
+            const startFrames = yield fetchNativeFramesWithTimeout();
+            // Set up automatic cleanup as a safety mechanism for spans that never complete
+            const cleanupTimeout = setTimeout(() => {
+                const entry = spanFrameDataMap.get(spanId);
+                if (entry) {
+                    spanFrameDataMap.delete(spanId);
+                    debug.log(`[TimeToDisplay] Cleaned up stale frame data for span ${spanId} after timeout.`);
+                }
+            }, FRAME_DATA_CLEANUP_TIMEOUT_MS);
+            if (!spanFrameDataMap.has(spanId)) {
+                spanFrameDataMap.set(spanId, { startFrames: null, endFrames: null, cleanupTimeout });
+            }
+            // Re-check after async operations - entry might have been deleted by captureEndFramesAndAttachToSpan
+            const frameData = spanFrameDataMap.get(spanId);
+            if (!frameData) {
+                // Span already ended and cleaned up, cancel the cleanup timeout
+                clearTimeout(cleanupTimeout);
+                debug.log(`[TimeToDisplay] Span ${spanId} already ended, discarding start frames.`);
+                return;
+            }
+            frameData.startFrames = startFrames;
+            frameData.cleanupTimeout = cleanupTimeout;
+            debug.log(`[TimeToDisplay] Captured start frames for span ${spanId}.`, startFrames);
+        }
+        catch (error) {
+            debug.log(`[TimeToDisplay] Failed to capture start frames for span ${spanId}.`, error);
+        }
+    });
+}
+/**
+ * Captures end frames and attaches frame data to span
+ */
+function captureEndFramesAndAttachToSpan(span, spanEndTimestampSeconds) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!NATIVE.enableNative) {
+            return;
+        }
+        const spanId = span.spanContext().spanId;
+        const frameData = spanFrameDataMap.get(spanId);
+        if (!(frameData === null || frameData === void 0 ? void 0 : frameData.startFrames)) {
+            debug.log(`[TimeToDisplay] No start frames found for span ${spanId}, skipping frame data collection.`);
+            return;
+        }
+        try {
+            const endFrames = yield fetchNativeFramesWithTimeout();
+            frameData.endFrames = endFrames;
+            attachFrameDataToSpan(span, frameData.startFrames, endFrames);
+            const spanStartTimestamp = spanToJSON(span).start_timestamp;
+            if (spanStartTimestamp) {
+                try {
+                    const endTimestamp = spanEndTimestampSeconds || spanToJSON(span).timestamp || Date.now() / 1000;
+                    const framesDelay = yield Promise.race([
+                        NATIVE.fetchNativeFramesDelay(spanStartTimestamp, endTimestamp),
+                        new Promise(resolve => setTimeout(() => resolve(null), FETCH_FRAMES_TIMEOUT_MS)),
+                    ]);
+                    if (framesDelay != null) {
+                        span.setAttribute('frames.delay', framesDelay);
+                    }
+                }
+                catch (delayError) {
+                    debug.log(`[TimeToDisplay] Failed to fetch frames delay for span ${spanId}.`, delayError);
+                }
+            }
+            debug.log(`[TimeToDisplay] Captured and attached end frames for span ${spanId}.`, endFrames);
+        }
+        catch (error) {
+            debug.log(`[TimeToDisplay] Failed to capture end frames for span ${spanId}.`, error);
+        }
+        finally {
+            // Clear the cleanup timeout since we're cleaning up now
+            if (frameData.cleanupTimeout) {
+                clearTimeout(frameData.cleanupTimeout);
+            }
+            spanFrameDataMap.delete(spanId);
+        }
+    });
+}
+/**
+ * Fetches native frames with a timeout
+ */
+function fetchNativeFramesWithTimeout() {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const timeoutId = setTimeout(() => {
+            if (!settled) {
+                settled = true;
+                reject('Fetching native frames took too long. Dropping frames.');
+            }
+        }, FETCH_FRAMES_TIMEOUT_MS);
+        NATIVE.fetchNativeFrames()
+            .then(value => {
+            if (settled) {
+                return;
+            }
+            clearTimeout(timeoutId);
+            settled = true;
+            if (!value) {
+                reject('Native frames response is null.');
+                return;
+            }
+            resolve(value);
+        })
+            .then(undefined, (error) => {
+            if (settled) {
+                return;
+            }
+            clearTimeout(timeoutId);
+            settled = true;
+            reject(error);
+        });
+    });
+}
+//# sourceMappingURL=timetodisplay.js.map

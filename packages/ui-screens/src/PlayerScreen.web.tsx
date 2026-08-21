@@ -26,7 +26,11 @@ const isPlainBrowserDev: boolean =
 
 function eagleUrl(url: string): string {
   if (!isPlainBrowserDev || !/^https?:\/\//i.test(url)) return url;
-  return `/eagle-proxy/${encodeURIComponent(url)}`;
+  // Raw (not encodeURIComponent'd): hls.js resolves relative playlist/segment
+  // URLs against this path, so the origin must stay in the path structure —
+  // /eagle-proxy/https://host/dir/master.m3u8 → …/dir/main.m3u8 resolves back
+  // to the right proxied URL. Encoding the whole URL would break that.
+  return `/eagle-proxy/${url}`;
 }
 
 /** Extract a readable message from a MediaError-ish payload. */
@@ -84,20 +88,11 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
           hls = new HlsCtor({
             lowLatencyMode: true,
             // Inject source headers (Jellyfin Authorization) into every
-            // playlist/segment request. Plain-browser dev also needs the
-            // vite proxy rewrite applied per-request here.
-            xhrSetup: (xhr, reqUrl) => {
+            // playlist/segment request. Inner URLs resolve against the
+            // proxied path automatically (origin kept in path structure).
+            xhrSetup: (xhr) => {
               if (streamHeaders) {
                 for (const [k, v] of Object.entries(streamHeaders)) xhr.setRequestHeader(k, v);
-              }
-              if (isPlainBrowserDev && reqUrl !== fetchUrl && /^https?:\/\//i.test(reqUrl)) {
-                // hls.js resolves relative segment URLs against the source;
-                // rewrite absolute ones through the dev proxy too.
-                try {
-                  xhr.open('GET', eagleUrl(reqUrl), true);
-                } catch {
-                  /* already opened — headers still apply */
-                }
               }
             },
           });

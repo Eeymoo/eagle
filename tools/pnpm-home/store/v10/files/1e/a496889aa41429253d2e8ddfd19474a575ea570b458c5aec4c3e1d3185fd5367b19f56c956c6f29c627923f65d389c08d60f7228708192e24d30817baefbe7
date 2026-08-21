@@ -1,0 +1,233 @@
+import type { Event, EventHint, Integration } from '@sentry/core';
+export declare const MOBILE_REPLAY_INTEGRATION_NAME = "MobileReplay";
+/**
+ * Screenshot strategy type for Android Session Replay.
+ *
+ * - `'canvas'`: Canvas-based screenshot strategy. This strategy does **not** support any masking options, it always masks text and images. Use this if your application has strict PII requirements.
+ * - `'pixelCopy'`: Pixel copy screenshot strategy (default). Supports all masking options.
+ */
+export type ScreenshotStrategy = 'canvas' | 'pixelCopy';
+export interface MobileReplayOptions {
+    /**
+     * Mask all text in recordings
+     *
+     * @default true
+     */
+    maskAllText?: boolean;
+    /**
+     * Mask all images in recordings
+     *
+     * @default true
+     */
+    maskAllImages?: boolean;
+    /**
+     * Mask all vector graphics in recordings
+     * Supports `react-native-svg`
+     *
+     * @default true
+     */
+    maskAllVectors?: boolean;
+    /**
+     * Enables the up to 5x faster experimental view renderer used by the Session Replay integration on iOS.
+     *
+     * Enabling this flag will reduce the amount of time it takes to render each frame of the session replay on the main thread, therefore reducing
+     * interruptions and visual lag.
+     *
+     * - Experiment: This is an experimental feature and is therefore disabled by default.
+     *
+     * @deprecated Use `enableViewRendererV2` instead.
+     * @platform ios
+     */
+    enableExperimentalViewRenderer?: boolean;
+    /**
+     * Enables up to 5x faster new view renderer used by the Session Replay integration on iOS.
+     *
+     * Enabling this flag will reduce the amount of time it takes to render each frame of the session replay on the main thread, therefore reducing
+     * interruptions and visual lag. [Our benchmarks](https://github.com/getsentry/sentry-cocoa/pull/4940) have shown a significant improvement of
+     * **up to 4-5x faster rendering** (reducing `~160ms` to `~36ms` per frame) on older devices.
+     *
+     * - Experiment: In case you are noticing issues with the new view renderer, please report the issue on [GitHub](https://github.com/getsentry/sentry-cocoa).
+     *               Eventually, we will remove this feature flag and use the new view renderer by default.
+     *
+     * @default true
+     * @platform ios
+     */
+    enableViewRendererV2?: boolean;
+    /**
+     * Enables up to 5x faster but incomplete view rendering used by the Session Replay integration on iOS.
+     *
+     * Enabling this flag will reduce the amount of time it takes to render each frame of the session replay on the main thread, therefore reducing
+     * interruptions and visual lag.
+     *
+     * - Note: This flag only has an effect when `enableViewRendererV2` is enabled, with up to 20% faster render times.
+     * - Experiment: This is an experimental feature and is therefore disabled by default.
+     *
+     * @default false
+     * @platform ios
+     */
+    enableFastViewRendering?: boolean;
+    /**
+     * Array of view class names to include in subtree traversal during session replay and screenshot capture on iOS.
+     *
+     * Only views that are instances of these classes (or subclasses) will be traversed.
+     * This helps prevent crashes when traversing problematic view hierarchies by allowing you to explicitly include only safe view classes.
+     *
+     * If both `includedViewClasses` and `excludedViewClasses` are set, `excludedViewClasses` takes precedence:
+     * views matching excluded classes won't be traversed even if they match an included class.
+     *
+     * @default undefined
+     * @platform ios
+     */
+    includedViewClasses?: string[];
+    /**
+     * Array of view class names to exclude from subtree traversal during session replay and screenshot capture on iOS.
+     *
+     * Views of these classes (or subclasses) will be skipped entirely, including all their children.
+     * This helps prevent crashes when traversing problematic view hierarchies by allowing you to explicitly exclude problematic view classes.
+     *
+     * If both `includedViewClasses` and `excludedViewClasses` are set, `excludedViewClasses` takes precedence:
+     * views matching excluded classes won't be traversed even if they match an included class.
+     *
+     * @default undefined
+     * @platform ios
+     */
+    excludedViewClasses?: string[];
+    /**
+     * Sets the screenshot strategy used by the Session Replay integration on Android.
+     *
+     * If your application has strict PII requirements we recommend using `'canvas'`.
+     * This strategy does **not** support any masking options, it always masks text and images.
+     *
+     * - Experiment: In case you are noticing issues with the canvas screenshot strategy, please report the issue on [GitHub](https://github.com/getsentry/sentry-java).
+     *
+     * @default 'pixelCopy'
+     * @platform android
+     */
+    screenshotStrategy?: ScreenshotStrategy;
+    /**
+     * Enables capturing `SurfaceView` content in Session Replay on Android.
+     *
+     * This allows replays to include content from components that render outside the normal
+     * View hierarchy (e.g. video players, map SDKs) which otherwise appear as black regions.
+     *
+     * - Experiment: Masking granularity is at the `SurfaceView` level only.
+     * - Note: Only works with the `pixelCopy` screenshot strategy (the default).
+     *
+     * @default false
+     * @platform android
+     */
+    captureSurfaceViews?: boolean;
+    /**
+     * Callback to determine if a replay should be captured for a specific error.
+     * When this callback returns `false`, no replay will be captured for the error.
+     * This callback is only called when an error occurs and `replaysOnErrorSampleRate` is set.
+     *
+     * @param event The error event
+     * @param hint Additional event information
+     * @returns `false` to skip capturing a replay for this error, `true` or `undefined` to proceed with sampling
+     */
+    beforeErrorSampling?: (event: Event, hint: EventHint) => boolean;
+    /**
+     * List of URLs (string match or RegExp) for which request and response details
+     * (headers and, when `networkCaptureBodies` is true, bodies) are captured and
+     * surfaced in the Replay network tab.
+     *
+     * String matches use substring matching; RegExp must match via `.test(url)`.
+     * Bodies are only captured for URLs that match `networkDetailAllowUrls` and
+     * do not match `networkDetailDenyUrls`.
+     *
+     * Authorization-like headers (`authorization`, `cookie`, `set-cookie`,
+     * `x-api-key`, `x-auth-token`, `proxy-authorization`) are always stripped.
+     *
+     * Both `XMLHttpRequest` (this covers `axios` and similar libraries) and
+     * `fetch` are supported — React Native's `fetch` is a polyfill built on
+     * `XMLHttpRequest`. Response bodies returned as `Blob`/`ArrayBuffer` (which is
+     * every `fetch` response) are read asynchronously and inlined when the
+     * `content-type` is text-like (JSON, XML, `text/*`, form data); genuinely
+     * binary payloads stay marked as unparseable. Request bodies passed as
+     * `Blob`/`ArrayBuffer` are not inlined yet.
+     *
+     * Note: `RegExp` patterns are matched in JavaScript for request enrichment, but
+     * only their string source is forwarded to the native SDKs (a `RegExp` can't
+     * cross the native bridge). The native side uses these forwarded values only to
+     * signal the Sentry frontend that captured details should be rendered.
+     *
+     * @default []
+     */
+    networkDetailAllowUrls?: (string | RegExp)[];
+    /**
+     * URLs (string match or RegExp) to exclude from network detail capture even
+     * if they match `networkDetailAllowUrls`. Use this to prevent capturing
+     * details for known-sensitive endpoints.
+     *
+     * @default []
+     */
+    networkDetailDenyUrls?: (string | RegExp)[];
+    /**
+     * If request and response bodies should be captured for URLs matched by
+     * `networkDetailAllowUrls`. Enabled by default — set to `false` to capture
+     * only headers for allow-listed URLs when you cannot tolerate body payloads
+     * being recorded.
+     *
+     * Bodies are truncated at ~150 KB; truncated payloads include a
+     * `MAX_BODY_SIZE_EXCEEDED` warning. URLs only enter the capture path after
+     * being explicitly allow-listed via `networkDetailAllowUrls`, so the
+     * default-on behaviour does not implicitly capture every request body.
+     *
+     * Aligned with the iOS and Android native SDK defaults.
+     *
+     * @default true
+     */
+    networkCaptureBodies?: boolean;
+    /**
+     * Additional request headers (case-insensitive names) to capture for matched
+     * URLs in addition to the defaults (`content-type`, `content-length`, `accept`).
+     *
+     * Note: only headers explicitly set on the `XMLHttpRequest` via
+     * `setRequestHeader` are observable; browser-managed headers are not.
+     *
+     * @default []
+     */
+    networkRequestHeaders?: string[];
+    /**
+     * Additional response headers (case-insensitive names) to capture for matched
+     * URLs in addition to the defaults (`content-type`, `content-length`, `accept`).
+     *
+     * @default []
+     */
+    networkResponseHeaders?: string[];
+}
+type MobileReplayIntegration = Integration & {
+    options: MobileReplayOptions;
+    getReplayId: () => string | null;
+};
+/**
+ * Network detail allow/deny lists accept `RegExp` in JS, but the native bridge
+ * can only serialize strings (a `RegExp` becomes `{}` when crossing the bridge).
+ *
+ * Convert `RegExp` entries to their `source` string so the native SDK can
+ * populate its `SentryReplayOptions`, which is what emits the rrweb options
+ * event that tells the Sentry frontend to render captured request/response
+ * details. The JS-side matching in `xhrUtils` keeps using the original
+ * `RegExp` values, so this normalization only affects native signaling.
+ */
+export declare function serializeNetworkDetailUrlsForNative(urls: (string | RegExp)[] | undefined): string[];
+/**
+ * The Mobile Replay Integration, let's you adjust the default mobile replay options.
+ * To be passed to `Sentry.init` with `replaysOnErrorSampleRate` or `replaysSessionSampleRate`.
+ *
+ * ```javascript
+ * Sentry.init({
+ *  replaysOnErrorSampleRate: 1.0,
+ *  replaysSessionSampleRate: 1.0,
+ *  integrations: [mobileReplayIntegration({
+ *    // Adjust the default options
+ *  })],
+ * });
+ * ```
+ *
+ * @experimental
+ */
+export declare const mobileReplayIntegration: (initOptions?: MobileReplayOptions) => MobileReplayIntegration;
+export {};
+//# sourceMappingURL=mobilereplay.d.ts.map

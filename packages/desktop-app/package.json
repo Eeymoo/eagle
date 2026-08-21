@@ -15,16 +15,17 @@
   },
   "dependencies": {
     "@eagle/core": "workspace:*",
-    "@eagle/jellyfin-plugin": "workspace:*",
-    "@eagle/m3u-tuner-plugin": "workspace:*",
+    "@eagle/design-tokens": "workspace:*",
     "@eagle/hdhome-run-plugin": "workspace:*",
     "@eagle/headless-ui": "workspace:*",
-    "@eagle/design-tokens": "workspace:*",
+    "@eagle/jellyfin-plugin": "workspace:*",
+    "@eagle/jellyfin-video-plugin": "workspace:*",
+    "@eagle/m3u-tuner-plugin": "workspace:*",
     "@eagle/ui-screens": "workspace:*",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "react-native-web": "^0.21.2",
-    "react-native-safe-area-context": "5.6.0"
+    "react-native-safe-area-context": "5.6.0",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0",

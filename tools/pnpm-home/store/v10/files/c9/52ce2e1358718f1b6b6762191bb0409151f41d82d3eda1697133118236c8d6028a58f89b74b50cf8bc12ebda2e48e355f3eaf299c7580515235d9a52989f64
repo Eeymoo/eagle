@@ -1,0 +1,138 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.withSentryAndroid = void 0;
+exports.modifyAppBuildGradle = modifyAppBuildGradle;
+exports.modifyMainApplication = modifyMainApplication;
+const config_plugins_1 = require("expo/config-plugins");
+const path = __importStar(require("path"));
+const logger_1 = require("./logger");
+const utils_1 = require("./utils");
+const withSentryAndroid = (config, { sentryProperties, useNativeInit = false, disableAutoUpload = false }) => {
+    const appBuildGradleCfg = (0, config_plugins_1.withAppBuildGradle)(config, config => {
+        if (config.modResults.language === 'groovy') {
+            config.modResults.contents = modifyAppBuildGradle(config.modResults.contents, disableAutoUpload);
+        }
+        else {
+            throw new Error('Cannot configure Sentry in the app gradle because the build.gradle is not groovy');
+        }
+        return config;
+    });
+    const mainApplicationCfg = useNativeInit ? modifyMainApplication(appBuildGradleCfg) : appBuildGradleCfg;
+    return (0, config_plugins_1.withDangerousMod)(mainApplicationCfg, [
+        'android',
+        dangerousMod => {
+            // oxlint-disable-next-line typescript-eslint(no-unsafe-member-access)
+            (0, utils_1.writeSentryPropertiesTo)(path.resolve(dangerousMod.modRequest.projectRoot, 'android'), sentryProperties);
+            return dangerousMod;
+        },
+    ]);
+};
+exports.withSentryAndroid = withSentryAndroid;
+const resolveSentryReactNativePackageJsonPath = '["node", "--print", "require(\'path\').dirname(require.resolve(\'@sentry/react-native/package.json\'))"].execute().text.trim()';
+/**
+ * Writes to projectDirectory/android/app/build.gradle,
+ * adding the relevant @sentry/react-native script.
+ */
+function modifyAppBuildGradle(buildGradle, disableAutoUpload = false) {
+    if (buildGradle.includes('sentry.gradle.kts')) {
+        if (disableAutoUpload && !buildGradle.includes('shouldSentryAutoUploadGeneral')) {
+            return buildGradle.replace(/^(apply from:.*sentry\.gradle.*)$/m, `$1\nproject.ext.shouldSentryAutoUploadGeneral = { -> return false }`);
+        }
+        if (!disableAutoUpload && buildGradle.includes('shouldSentryAutoUploadGeneral')) {
+            return buildGradle.replace(/\nproject\.ext\.shouldSentryAutoUploadGeneral = \{ -> return false \}\n?/, '\n');
+        }
+        return buildGradle;
+    }
+    // Migrate old sentry.gradle references to sentry.gradle.kts
+    // Use a regex to avoid matching package names like io.sentry.android.gradle
+    if (/(?<=[/"'])sentry\.gradle(?!\.kts)/.test(buildGradle)) {
+        return modifyAppBuildGradle(buildGradle.replace(/(?<=[/"'])sentry\.gradle(?!\.kts)/g, 'sentry.gradle.kts'), disableAutoUpload);
+    }
+    // Use the same location that sentry-wizard uses
+    // See: https://github.com/getsentry/sentry-wizard/blob/e9b4522f27a852069c862bd458bdf9b07cab6e33/lib/Steps/Integrations/ReactNative.ts#L232
+    const pattern = /^android {/m;
+    if (!buildGradle.match(pattern)) {
+        (0, logger_1.warnOnce)('Could not find `^android {` in `android/app/build.gradle`. Please open a bug report at https://github.com/getsentry/sentry-react-native.');
+        return buildGradle;
+    }
+    const applyFrom = `apply from: new File(${resolveSentryReactNativePackageJsonPath}, "sentry.gradle.kts")`;
+    const disableUploadOverride = disableAutoUpload
+        ? `\nproject.ext.shouldSentryAutoUploadGeneral = { -> return false }`
+        : '';
+    return buildGradle.replace(pattern, match => `${applyFrom}${disableUploadOverride}\n\n${match}`);
+}
+function modifyMainApplication(config) {
+    return (0, config_plugins_1.withMainApplication)(config, config => {
+        if (!config.modResults?.path) {
+            (0, logger_1.warnOnce)("Can't add 'RNSentrySDK.init' to Android MainApplication, because the file was not found.");
+            return config;
+        }
+        // oxlint-disable-next-line typescript-eslint(no-unsafe-member-access)
+        const fileName = path.basename(config.modResults.path);
+        if (config.modResults.contents.includes('RNSentrySDK.init')) {
+            (0, logger_1.warnOnce)(`Your '${fileName}' already contains 'RNSentrySDK.init', the native code won't be updated.`);
+            return config;
+        }
+        if (config.modResults.language === 'java') {
+            // Add RNSentrySDK.init
+            const originalContents = config.modResults.contents;
+            config.modResults.contents = config.modResults.contents.replace(/(super\.onCreate\(\)[;\n]*)([ \t]*)/, '$1\n$2RNSentrySDK.init(this);\n$2');
+            if (config.modResults.contents === originalContents) {
+                (0, logger_1.warnOnce)(`Failed to insert 'RNSentrySDK.init' in '${fileName}'.`);
+            }
+            else if (!config.modResults.contents.includes('import io.sentry.react.RNSentrySDK;')) {
+                // Insert import statement after package declaration
+                config.modResults.contents = config.modResults.contents.replace(/(package .*;\n\n?)/, '$1import io.sentry.react.RNSentrySDK;\n');
+            }
+        }
+        else if (config.modResults.language === 'kt') {
+            // Add RNSentrySDK.init
+            const originalContents = config.modResults.contents;
+            config.modResults.contents = config.modResults.contents.replace(/(super\.onCreate\(\)[;\n]*)([ \t]*)/, '$1\n$2RNSentrySDK.init(this)\n$2');
+            if (config.modResults.contents === originalContents) {
+                (0, logger_1.warnOnce)(`Failed to insert 'RNSentrySDK.init' in '${fileName}'.`);
+            }
+            else if (!config.modResults.contents.includes('import io.sentry.react.RNSentrySDK')) {
+                // Insert import statement after package declaration
+                config.modResults.contents = config.modResults.contents.replace(/(package .*\n\n?)/, '$1import io.sentry.react.RNSentrySDK\n');
+            }
+        }
+        else {
+            (0, logger_1.warnOnce)(`Unsupported language '${config.modResults.language}' detected in '${fileName}', the native code won't be updated.`);
+        }
+        return config;
+    });
+}

@@ -1,0 +1,19 @@
+import type { Integration } from '@sentry/core';
+import { buildExpoRouterTemplatedPath } from './expoRouterStore';
+import { reactNavigationIntegration } from './reactnavigation';
+export { buildExpoRouterTemplatedPath };
+export declare const INTEGRATION_NAME = "ExpoRouter";
+type ExpoRouterIntegrationOptions = Parameters<typeof reactNavigationIntegration>[0];
+/**
+ * Integration that connects Expo Router with `reactNavigationIntegration` without
+ * requiring the user to manually pass a `useNavigationContainerRef()` ref.
+ *
+ * @example
+ * ```ts
+ * Sentry.init({
+ *   integrations: [Sentry.expoRouterIntegration()],
+ * });
+ * ```
+ */
+export declare const expoRouterIntegration: (options?: ExpoRouterIntegrationOptions) => Integration;
+//# sourceMappingURL=expoRouterIntegration.d.ts.map
