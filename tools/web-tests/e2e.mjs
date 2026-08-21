@@ -1,0 +1,24 @@
+import { chromium } from '/_home/.npm/_npx/226752580240d182/node_modules/playwright/index.mjs';
+const browser = await chromium.launch({ executablePath: '/_home/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell', headless: true });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const errors = [];
+page.on('pageerror', e => errors.push(e.message.slice(0, 150)));
+await page.goto('http://localhost:1420/', { waitUntil: 'networkidle' });
+await page.waitForTimeout(1200);
+console.log('1. list renders:', (await page.evaluate(() => document.body.innerText)).includes('Eagle'));
+// open settings (gear = last text node ⚙︎)
+await page.getByText('⚙︎').click();
+await page.waitForTimeout(600);
+const settingsText = await page.evaluate(() => document.body.innerText);
+console.log('2. settings opens:', settingsText.includes('直播源管理'), '| tabs:', ['Jellyfin','M3U Tuner','HDHomeRun'].map(t=>settingsText.includes(t)));
+await page.getByText('M3U Tuner').last().click();
+await page.waitForTimeout(400);
+const input = page.getByPlaceholder('http://example.com/playlist.m3u');
+console.log('3. m3u input visible:', await input.isVisible());
+await input.fill('https://iptv-org.github.io/iptv/countries/cn.m3u');
+await page.getByText('添加', { exact: true }).click();
+await page.waitForTimeout(10000);
+const rows = await page.locator('[data-testid]').count();
+const anyRow = await page.evaluate(() => document.body.innerText.length);
+console.log('4. after add — back on list, body length:', anyRow, '| pageerrors:', errors.length ? errors.slice(0,2) : 'none');
+await browser.close();

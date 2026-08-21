@@ -1,0 +1,10 @@
+import { chromium } from '/_home/.npm/_npx/226752580240d182/node_modules/playwright/index.mjs';
+const browser = await chromium.launch({ executablePath: '/_home/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell', headless: true });
+const page = await browser.newPage();
+page.on('pageerror', e => console.log('PAGEERROR:', e.message.slice(0, 200)));
+page.on('console', m => { if (m.type() === 'error') console.log('CONSOLE:', m.text().slice(0, 200)); });
+await page.goto('http://localhost:1420/', { waitUntil: 'networkidle' }).catch(e => console.log('goto err', e.message));
+await page.waitForTimeout(2500);
+console.log('body text:', JSON.stringify((await page.evaluate(() => document.body.innerText)).slice(0, 200)));
+console.log('root html len:', await page.evaluate(() => document.getElementById('root')?.innerHTML.length ?? 0));
+await browser.close();

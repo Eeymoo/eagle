@@ -1,0 +1,12 @@
+import { chromium } from '/_home/.npm/_npx/226752580240d182/node_modules/playwright/index.mjs';
+const browser = await chromium.launch({ executablePath: '/_home/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell', headless: true });
+const page = await browser.newPage();
+await page.goto('http://localhost:1420/', { waitUntil: 'networkidle' });
+await page.waitForTimeout(1200);
+await page.getByText('⚙︎').click();
+await page.waitForTimeout(500);
+await page.getByText('M3U Tuner', { exact: true }).click();
+await page.waitForTimeout(500);
+const inputs = await page.evaluate(() => Array.from(document.querySelectorAll('input')).map(i => ({ type: i.type, ph: i.placeholder, visible: i.offsetParent !== null })));
+console.log(JSON.stringify(inputs));
+await browser.close();

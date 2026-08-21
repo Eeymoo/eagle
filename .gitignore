@@ -1,5 +1,5 @@
 node_modules/
-tools/
+
 packages/rn-app/dist/
 packages/rn-app/dist-check/
 packages/rn-app/.expo/

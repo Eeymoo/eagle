@@ -1,0 +1,25 @@
+import { chromium } from '/_home/.npm/_npx/226752580240d182/node_modules/playwright/index.mjs';
+const browser = await chromium.launch({ executablePath: '/_home/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell', headless: true });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const errors = [];
+page.on('pageerror', e => errors.push(e.message.slice(0, 120)));
+await page.goto('http://localhost:1420/', { waitUntil: 'domcontentloaded' });
+await page.evaluate(() => localStorage.clear());
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForTimeout(800);
+await page.getByText('⚙︎').click();
+await page.waitForTimeout(400);
+await page.getByText('HDHomeRun').last().click();
+await page.waitForTimeout(300);
+await page.getByPlaceholder('http://192.168.1.50').fill('http://127.0.0.1:1954');
+await page.getByText('添加', { exact: true }).click();
+await page.waitForTimeout(4000);
+const text = await page.evaluate(() => document.body.innerText);
+console.log('1. channels from mock device:', ['CCTV-1', 'CCTV-5', '省卫视'].map(c => text.includes(c)));
+// play one
+await page.getByText('CCTV-1 综合', { exact: true }).first().click({ timeout: 6000 }).catch(e => console.log('click err:', e.message.slice(0, 60)));
+await page.waitForTimeout(3000);
+const video = await page.locator('video').count();
+console.log('2. player mounted:', video === 1);
+console.log('3. pageerrors:', errors.length ? errors : 'none');
+await browser.close();
