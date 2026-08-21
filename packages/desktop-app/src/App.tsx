@@ -27,7 +27,7 @@ import { hdHomeRunPlugin } from '@eagle/hdhome-run-plugin';
 import { createEagleControllers } from '@eagle/headless-ui';
 import type { EagleControllers } from '@eagle/headless-ui';
 import { useChannelList } from '@eagle/headless-ui';
-import { ChannelListScreen, PlayerScreen, SettingsScreen, ToastProvider } from '@eagle/ui-screens';
+import { ChannelListScreen, PlayerScreen, SettingsScreen, ToastProvider, VodPlayerScreen } from '@eagle/ui-screens';
 import { TauriPort, createSettingsStore, eagleUrl } from './platform.js';
 import './app.css';
 
@@ -167,12 +167,21 @@ function PlayerRoute({ controllers }: { controllers: EagleControllers }): React.
 
   return (
     <View style={styles.playerRoot}>
-      <PlayerScreen
-        controller={controllers.player}
-        controls={controllers.playerControls}
-        channel={channel}
-        onBack={() => navigate('/')}
-      />
+      {channel.isVod ? (
+        <VodPlayerScreen
+          controller={controllers.player}
+          controls={controllers.playerControls}
+          channel={channel}
+          onBack={() => navigate('/')}
+        />
+      ) : (
+        <PlayerScreen
+          controller={controllers.player}
+          controls={controllers.playerControls}
+          channel={channel}
+          onBack={() => navigate('/')}
+        />
+      )}
     </View>
   );
 }

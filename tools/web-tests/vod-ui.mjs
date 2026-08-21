@@ -49,5 +49,10 @@ console.log('4. seek max (duration):', dur);
 // seek interaction: set slider to ~50%
 const v = await page.evaluate(() => { const vid = document.querySelector('video'); return vid ? { t: vid.currentTime, d: vid.duration } : null; });
 console.log('5. video pos/dur:', JSON.stringify(v));
+console.log('6. skip buttons:', await page.locator('.vod-skip').count());
+await page.locator('.vod-skip').last().click().catch(() => {});
+await page.waitForTimeout(1500);
+const v2 = await page.evaluate(() => { const vid = document.querySelector('video'); return vid ? { t: vid.currentTime } : null; });
+console.log('7. after +10s seek:', JSON.stringify(v2));
 console.log('errors:', errors.length ? errors.slice(0, 5) : 'none');
 await browser.close();

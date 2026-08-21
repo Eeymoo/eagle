@@ -24,7 +24,7 @@ import { createEagleControllers } from '@eagle/headless-ui';
 import type { EagleControllers } from '@eagle/headless-ui';
 import { ReactNativePort, createSettingsStore } from './platform.js';
 import { ChannelListScreen } from '@eagle/ui-screens';
-import { PlayerScreen } from '@eagle/ui-screens';
+import { PlayerScreen, VodPlayerScreen } from '@eagle/ui-screens';
 import { SettingsScreen } from '@eagle/ui-screens';
 
 /** Source-plugin composition for the MVP build. */
@@ -118,12 +118,21 @@ export function EagleApp(): React.JSX.Element {
           />
         )}
         {route === 'player' && current && (
-          <PlayerScreen
-            controller={controllers.player}
-            controls={controllers.playerControls}
-            channel={current}
-            onBack={() => setRoute('list')}
-          />
+          current.isVod ? (
+            <VodPlayerScreen
+              controller={controllers.player}
+              controls={controllers.playerControls}
+              channel={current}
+              onBack={() => setRoute('list')}
+            />
+          ) : (
+            <PlayerScreen
+              controller={controllers.player}
+              controls={controllers.playerControls}
+              channel={current}
+              onBack={() => setRoute('list')}
+            />
+          )
         )}
         {route === 'settings' && (
           <SettingsScreen

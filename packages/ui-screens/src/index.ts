@@ -20,3 +20,7 @@ export type { SettingsScreenProps } from './SettingsScreen.js';
 // Consumers must set tsconfig moduleSuffixes accordingly.
 export { PlayerScreen } from './PlayerScreen';
 export type { PlayerScreenProps } from './PlayerScreen';
+// VOD (video-mode) player: seek bar, ±10s skips, duration — for isVod
+// channels. Live channels keep PlayerScreen (LIVE semantics, no seek).
+export { VodPlayerScreen } from './VodPlayerScreen';
+export type { VodPlayerScreenProps } from './VodPlayerScreen';
