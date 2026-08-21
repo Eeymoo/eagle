@@ -4,7 +4,7 @@
  * those live in @eagle/headless-ui.
  */
 import React, { useEffect } from 'react';
-import { FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { Channel } from '@eagle/core';
 import type { ChannelListController, HealthController } from '@eagle/headless-ui';
 import { useChannelList, useHealth } from '@eagle/headless-ui';
@@ -101,11 +101,16 @@ export function ChannelListScreen({ controller, health, onPlay, onOpenSettings }
   );
 }
 
+// Desktop (react-native-web) proportions: search doesn't stretch, rows breathe.
+const isWeb = Platform.OS === 'web';
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: t.colors.bgCanvas },
   header: { flexDirection: 'row', alignItems: 'center', padding: t.spacing.md, gap: t.spacing.sm },
   search: {
-    flex: 1,
+    // Web: fixed 460px (RN's flex:0 expands to flex-basis:0% in RNW and
+    // collapses the box). Native: fill the header row.
+    ...(isWeb ? { width: 460 } : { flex: 1 }),
     backgroundColor: t.colors.bgSurface,
     color: t.colors.textPrimary,
     borderRadius: t.radii.md,
@@ -118,8 +123,19 @@ const styles = StyleSheet.create({
   healthHint: { color: t.colors.accent, textAlign: 'center', fontSize: t.typography.fontSizeXs, paddingVertical: t.spacing.xs },
   error: { color: t.colors.danger, textAlign: 'center', marginTop: t.spacing.xl },
   retry: { color: t.colors.accent },
-  row: { flexDirection: 'row', alignItems: 'center', padding: t.spacing.md, gap: t.spacing.md },
-  logo: { width: 44, height: 44, borderRadius: t.radii.md, backgroundColor: t.colors.bgSurface },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Platform.select({ web: 14, default: t.spacing.md }),
+    gap: Platform.select({ web: t.spacing.lg, default: t.spacing.md }),
+    borderRadius: Platform.select({ web: 12, default: 0 }),
+  },
+  logo: {
+    width: Platform.select({ web: 52, default: 44 }),
+    height: Platform.select({ web: 52, default: 44 }),
+    borderRadius: t.radii.md,
+    backgroundColor: t.colors.bgSurface,
+  },
   logoFallback: { alignItems: 'center', justifyContent: 'center' },
   logoFallbackText: { color: t.colors.accent, fontWeight: t.typography.fontWeightBold },
   rowMain: { flex: 1 },

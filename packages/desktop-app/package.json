@@ -2,7 +2,7 @@
   "name": "@eagle/desktop-app",
   "version": "0.1.0",
   "private": true,
-  "description": "Eagle desktop shell — Tauri v2 wrapper around @eagle/tauri-ui-plugin",
+  "description": "Eagle desktop shell \u2014 Tauri v2 + react-native-web over @eagle/ui-screens",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,14 +14,22 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
-    "@eagle/tauri-ui-plugin": "workspace:*",
+    "@eagle/core": "workspace:*",
+    "@eagle/jellyfin-plugin": "workspace:*",
+    "@eagle/m3u-tuner-plugin": "workspace:*",
+    "@eagle/hdhome-run-plugin": "workspace:*",
+    "@eagle/headless-ui": "workspace:*",
+    "@eagle/design-tokens": "workspace:*",
+    "@eagle/ui-screens": "workspace:*",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "react-native-web": "^0.21.2",
+    "react-native-safe-area-context": "5.6.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0",
-    "@types/react": "~19.1.0",
-    "@types/react-dom": "~19.1.0",
+    "@types/react": "~19.0.0",
+    "@types/react-dom": "~19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^7.1.0"

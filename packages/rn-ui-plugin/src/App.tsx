@@ -12,7 +12,7 @@
 import React, { useEffect, useState } from 'react';
 import { BackHandler, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { ToastProvider } from './Toast.js';
+import { ToastProvider } from '@eagle/ui-screens';
 import * as Application from 'expo-application';
 import { EagleCore } from '@eagle/core';
 import type { Channel, SourcePlugin } from '@eagle/core';
@@ -22,9 +22,9 @@ import { hdHomeRunPlugin } from '@eagle/hdhome-run-plugin';
 import { createEagleControllers } from '@eagle/headless-ui';
 import type { EagleControllers } from '@eagle/headless-ui';
 import { ReactNativePort, createSettingsStore } from './platform.js';
-import { ChannelListScreen } from './ChannelListScreen.js';
-import { PlayerScreen } from './PlayerScreen.js';
-import { SettingsScreen } from './SettingsScreen.js';
+import { ChannelListScreen } from '@eagle/ui-screens';
+import { PlayerScreen } from '@eagle/ui-screens';
+import { SettingsScreen } from '@eagle/ui-screens';
 
 /** Source-plugin composition for the MVP build. */
 export const MVP_PLUGINS: SourcePlugin[] = [jellyfinPlugin, m3uTunerPlugin, hdHomeRunPlugin];

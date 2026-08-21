@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "moduleSuffixes": [".native", ""],
     "jsx": "react-jsx",
     "lib": ["ES2022"],
     "strict": true,
@@ -16,7 +17,8 @@
       "@eagle/headless-ui": ["../../packages/headless-ui/src/index.ts"],
       "@eagle/design-tokens/rn": ["../../packages/design-tokens/src/generated/rn.ts"],
       "@eagle/design-tokens": ["../../packages/design-tokens/src/index.ts"],
-      "@eagle/rn-ui-plugin": ["../../packages/rn-ui-plugin/src/index.ts"]
+      "@eagle/rn-ui-plugin": ["../../packages/rn-ui-plugin/src/index.ts"],
+      "@eagle/ui-screens": ["../../packages/ui-screens/src/index.ts"]
     }
   },
   "include": ["index.ts", "../../packages/rn-ui-plugin/src"]

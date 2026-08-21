@@ -2,11 +2,9 @@
  * Eagle → Tauri (WebView/DOM) platform bridge.
  *
  * Implements the core `Port`/`SettingsStore` capabilities on top of web
- * primitives available inside the Tauri WebView: global fetch for HTTP
- * (swap to tauri-plugin-http's `fetch` for bypass-CORS Rust-side requests),
- * localStorage-backed settings (swap to tauri-plugin-store for a JSON file),
- * Date.now and fnv1a for ids. This is the ONLY file allowed to touch
- * platform storage/network primitives.
+ * primitives available inside the Tauri WebView: global fetch for HTTP,
+ * localStorage-backed settings, Date.now and fnv1a for ids. This is the
+ * ONLY file in the desktop shell allowed to touch storage primitives.
  */
 import type { Port, SettingsStore } from '@eagle/core';
 
@@ -21,10 +19,24 @@ export function fnv1a(input: string): string {
 }
 
 /**
- * Port over the WebView's global fetch. Inside Tauri this honors the app's
- * CSP / tauri.conf.json allowlist; when the bundle runs with
- * tauri-plugin-http initialized, the global fetch IS the plugin's fetch.
+ * Browser-dev CORS escape hatch.
+ *
+ * IPTV origins rarely send Access-Control-Allow-Origin, so plain-browser dev
+ * (vite, no Tauri shell) has every fetch blocked. We rewrite absolute URLs
+ * to the vite dev server's /eagle-proxy/ route which forwards Node-side.
+ * Inside the Tauri WebView URLs pass through untouched.
  */
+const isPlainBrowserDev: boolean =
+  typeof window !== 'undefined' &&
+  !('__TAURI_INTERNALS__' in window) &&
+  /^(localhost|127\.0\.0\.1|192\.168\.)/.test(window.location?.hostname ?? '');
+
+export function eagleUrl(url: string): string {
+  if (!isPlainBrowserDev || !/^https?:\/\//i.test(url)) return url;
+  return `/eagle-proxy/${encodeURIComponent(url)}`;
+}
+
+/** Port over the WebView's global fetch (tauri-plugin-http when enabled). */
 export class TauriPort implements Port {
   now(): number {
     return Date.now();
@@ -45,19 +57,19 @@ export class TauriPort implements Port {
   }
 
   async getText(url: string, init?: { headers?: Record<string, string>; timeoutMs?: number }): Promise<string> {
-    const res = await this.doFetch(url, { ...init, method: 'GET' });
+    const res = await this.doFetch(eagleUrl(url), { ...init, method: 'GET' });
     if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
     return res.text();
   }
 
   async getJson<T>(url: string, init?: { headers?: Record<string, string>; timeoutMs?: number }): Promise<T> {
-    const res = await this.doFetch(url, { ...init, method: 'GET' });
+    const res = await this.doFetch(eagleUrl(url), { ...init, method: 'GET' });
     if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
     return res.json() as Promise<T>;
   }
 
   async postJson<T>(url: string, body: unknown, init?: { headers?: Record<string, string>; timeoutMs?: number }): Promise<T> {
-    const res = await this.doFetch(url, {
+    const res = await this.doFetch(eagleUrl(url), {
       ...init,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...init?.headers },

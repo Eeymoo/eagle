@@ -1,0 +1,116 @@
+/* Eagle desktop shell — desktop-only chrome. Screen UI is single-source in
+   @eagle/ui-screens (RN styles via react-native-web); this file only carries
+   the web player's CSS classes (PlayerScreen.web.tsx) and shell polish. */
+
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: #0e1116;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #2a3342; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #5b6472; }
+
+/* ---- web player (PlayerScreen.web.tsx classnames) ---- */
+.player-root { flex: 1; position: relative; background: #000; border: none; padding: 0; width: 100%; cursor: default; }
+.player-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.player-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: linear-gradient(rgba(6, 8, 12, 0.85), rgba(6, 8, 12, 0));
+}
+.player-back {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(26, 32, 41, 0.8);
+  border: none;
+  cursor: pointer;
+  color: #e8ecf1;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  transition: background 120ms ease;
+}
+.player-back:hover { background: #232b37; }
+.player-title {
+  flex: 1;
+  color: #e8ecf1;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+.live {
+  background: #ff6b6b;
+  color: #fff;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.center-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: rgba(14, 17, 22, 0.55);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 24px;
+  transition: background 120ms ease;
+}
+.center-btn:hover { background: rgba(14, 17, 22, 0.75); }
+.spinner {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 40px; height: 40px;
+  margin: -20px 0 0 -20px;
+  border: 3px solid #2a3342;
+  border-top-color: #5b89ff;
+  border-radius: 50%;
+  animation: eagle-spin 0.9s linear infinite;
+}
+@keyframes eagle-spin { to { transform: rotate(360deg); } }
+.error-box {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 24px;
+  text-align: center;
+}
+.error-main { color: #ff6b6b; font-size: 15px; white-space: pre-line; }
+.error-hint { color: #8b95a5; font-size: 11px; }
+.recheck-btn {
+  margin-top: 8px;
+  background: none;
+  cursor: pointer;
+  color: #5b89ff;
+  font-size: 13px;
+  border: 1px solid #2a3342;
+  border-radius: 8px;
+  padding: 4px 12px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.recheck-btn:hover { border-color: #5b89ff; background: rgba(91, 137, 255, 0.08); }

@@ -5,7 +5,7 @@ on:
     branches: [release]   # 与 APK 工作流一致：release 快照分支
     paths:
       - 'packages/desktop-app/**'
-      - 'packages/tauri-ui-plugin/**'
+      - 'packages/ui-screens/**'
       - 'packages/core/**'
       - 'packages/headless-ui/**'
       - 'packages/design-tokens/**'
