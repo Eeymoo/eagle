@@ -44,16 +44,19 @@ describe('JellyfinSource', () => {
     expect(channels[0]?.logoUrl).toContain('Items/ch1/Images/Primary');
   });
 
-  it('resolves a direct-stream URL with token', async () => {
-    const port = new MemoryPort();
+  it('resolves a master.m3u8 HLS URL with Authorization header (Jellyfin 12)', async () => {
+    const port = new MemoryPort().stubPost('http://jf.local/Items/ch1/PlaybackInfo', {
+      MediaSources: [{ Id: 'ms1' }],
+    });
     const source = new JellyfinSource(port, {
       serverUrl: 'http://jf.local',
       userId: 'u1',
       accessToken: 'tok123',
     });
     const stream = await source.resolveStream('jf:ch1');
-    expect(stream.url).toBe('http://jf.local/LiveTv/Channels/ch1/Play?api_key=tok123');
-    expect(stream.kind).toBe('jellyfin-http');
+    expect(stream.url).toBe('http://jf.local/videos/ch1/master.m3u8?MediaSourceId=ms1');
+    expect(stream.kind).toBe('jellyfin-hls');
+    expect(stream.headers?.Authorization).toBe('MediaBrowser Token="tok123"');
   });
 
   it('connect rejects missing fields', async () => {

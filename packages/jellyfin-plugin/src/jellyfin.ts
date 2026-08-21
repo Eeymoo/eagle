@@ -73,7 +73,11 @@ export class JellyfinSource extends LiveSourceBase {
   }
 
   private authHeaders(): Record<string, string> {
-    return { Accept: 'application/json', 'X-Emby-Token': this.session.accessToken };
+    // Jellyfin 12: standard Authorization header; legacy X-Emby-Token → 401.
+    return {
+      Accept: 'application/json',
+      Authorization: `MediaBrowser Token="${this.session.accessToken}"`,
+    };
   }
 
   async listChannels(_opts?: ListChannelsOpts): Promise<ChannelPage> {
@@ -91,14 +95,37 @@ export class JellyfinSource extends LiveSourceBase {
   async resolveStream(channelId: string): Promise<StreamUrl> {
     const bare = channelId.replace(/^jf:/, '');
     if (!bare) throw new CoreError('NOT_FOUND', `Jellyfin: bad channel id "${channelId}"`);
-    const url = joinUrl(this.session.serverUrl, `LiveTv/Channels/${bare}/Play`);
+    // Jellyfin 12: /LiveTv/Channels/{id}/Play is gone; the HLS live stream
+    // is videos/{id}/master.m3u8 (server remuxes even remote IPTV sources).
+    // Query-param auth (api_key) is unreliable on 12 — pass the token as an
+    // Authorization header; players inject it (hls.js xhrSetup / native
+    // source headers). MediaSourceId comes from PlaybackInfo.
+    let mediaSourceId: string | undefined;
+    try {
+      const postJson = this.port.postJson?.bind(this.port);
+      const pbi = postJson
+        ? await postJson<{ MediaSources?: { Id?: string }[] }>(
+            joinUrl(this.session.serverUrl, `Items/${bare}/PlaybackInfo`),
+            { UserId: this.session.userId },
+            { headers: this.authHeaders(), timeoutMs: 10_000 },
+          )
+        : undefined;
+      mediaSourceId = pbi?.MediaSources?.[0]?.Id ?? undefined;
+    } catch {
+      // PlaybackInfo is optional; master.m3u8 works without MediaSourceId
+      // when the item has a single source.
+    }
+    const streamUrl = withParams(joinUrl(this.session.serverUrl, `videos/${bare}/master.m3u8`), {
+      ...(mediaSourceId ? { MediaSourceId: mediaSourceId } : {}),
+    });
     return {
-      // Direct stream: MVP players handle the raw ts container better than
-      // full PlaybackInfo negotiation; api_key auth keeps players header-free.
-      url: withParams(url, { api_key: this.session.accessToken }),
-      kind: 'jellyfin-http',
-      containerHint: 'ts',
-      headers: { 'X-Emby-Token': this.session.accessToken },
+      url: streamUrl,
+      kind: 'jellyfin-hls',
+      containerHint: 'm3u8',
+      headers: {
+        // Jellyfin 12 accepts ONLY this header form (X-Emby-Token → 401).
+        Authorization: `MediaBrowser Token="${this.session.accessToken}"`,
+      },
     };
   }
 

@@ -187,7 +187,7 @@ export class HealthController {
   private async probeOne(channel: Channel): Promise<boolean> {
     try {
       const stream = await this.deps.resolveStream(channel.id);
-      const ok = await this.reach(stream.url);
+      const ok = await this.reach(stream.url, stream.headers);
       const now = this.deps.port.now();
       this.cache.set(channel.id, { url: stream.url, at: now, ok });
       return ok;
@@ -196,7 +196,7 @@ export class HealthController {
     }
   }
 
-  private async reach(url: string): Promise<boolean> {
+  private async reach(url: string, headers?: Record<string, string>): Promise<boolean> {
     // Try HEAD; some IPTV servers reject HEAD → retry with a 1-byte-ish GET.
     for (const method of ['HEAD', 'GET'] as const) {
       try {
@@ -207,7 +207,10 @@ export class HealthController {
           res = await fetch(this.deps.mapUrl?.(url) ?? url, {
             method,
             signal: ac.signal,
-            headers: method === 'GET' ? { Range: 'bytes=0-1024' } : undefined,
+            headers: {
+              ...(headers ?? {}),
+              ...(method === 'GET' ? { Range: 'bytes=0-1024' } : {}),
+            },
           });
         } finally {
           clearTimeout(timer);

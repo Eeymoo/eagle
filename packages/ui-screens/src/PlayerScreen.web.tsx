@@ -57,6 +57,10 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
   }, [controller, channel]);
 
   const url = state.stream?.url ?? null;
+  // Source-level request headers (e.g. Jellyfin 12 Authorization header).
+  // <video> can't send custom headers, so header-carrying streams MUST go
+  // through hls.js — we force that below.
+  const streamHeaders = state.stream?.headers ?? null;
 
   // Attach the stream: native HLS on Safari, hls.js (MSE) everywhere else.
   // eagleUrl: plain-browser dev routes through the vite CORS proxy.
@@ -66,15 +70,37 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
 
     const fetchUrl = eagleUrl(url);
     const isHls = /\.m3u8(\?|$)/i.test(url);
+    // Header-carrying streams (Jellyfin auth) require hls.js xhrSetup —
+    // native playback can't attach headers to media requests.
+    const needsHlsJs = (isHls && !video.canPlayType('application/vnd.apple.mpegurl')) || !!streamHeaders;
     let hls: Hls | null = null;
     let disposed = false;
 
-    if (isHls && !video.canPlayType('application/vnd.apple.mpegurl')) {
+    if (needsHlsJs) {
       void import('hls.js').then((mod) => {
         if (disposed) return;
         const HlsCtor = mod.default;
         if (HlsCtor.isSupported()) {
-          hls = new HlsCtor({ lowLatencyMode: true });
+          hls = new HlsCtor({
+            lowLatencyMode: true,
+            // Inject source headers (Jellyfin Authorization) into every
+            // playlist/segment request. Plain-browser dev also needs the
+            // vite proxy rewrite applied per-request here.
+            xhrSetup: (xhr, reqUrl) => {
+              if (streamHeaders) {
+                for (const [k, v] of Object.entries(streamHeaders)) xhr.setRequestHeader(k, v);
+              }
+              if (isPlainBrowserDev && reqUrl !== fetchUrl && /^https?:\/\//i.test(reqUrl)) {
+                // hls.js resolves relative segment URLs against the source;
+                // rewrite absolute ones through the dev proxy too.
+                try {
+                  xhr.open('GET', eagleUrl(reqUrl), true);
+                } catch {
+                  /* already opened — headers still apply */
+                }
+              }
+            },
+          });
           hls.on(HlsCtor.Events.ERROR, (_evt, data) => {
             if (data.fatal) controller.onMediaError(describeVideoError(data));
           });
@@ -97,7 +123,7 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
       video.load();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, reloadKey, controller]);
+  }, [url, reloadKey, controller, streamHeaders]);
 
   // Play/pause follows the controls state machine.
   useEffect(() => {
