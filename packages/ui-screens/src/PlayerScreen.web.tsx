@@ -166,6 +166,8 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
           className="player-video"
           playsInline
           autoPlay
+          // 点视频本体也要能唤出/收起控制条（video 占满画面，根容器空白几乎点不到）。
+          onClick={() => controls.toggle()}
           onPlaying={() => controller.onMediaPlaying()}
           onPause={() => controller.onMediaPaused()}
           onWaiting={() => controller.onMediaLoading()}

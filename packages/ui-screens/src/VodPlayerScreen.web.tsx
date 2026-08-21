@@ -130,6 +130,8 @@ export function VodPlayerScreen({ controller, controls, channel, onBack }: VodPl
           className="player-video"
           playsInline
           autoPlay
+          // 点视频本体也要能唤出/收起控制条（video 占满画面，根容器空白几乎点不到）。
+          onClick={() => controls.toggle()}
           onPlaying={() => controller.onMediaPlaying()}
           onPause={() => controller.onMediaPaused()}
           onWaiting={() => controller.onMediaLoading()}
@@ -151,10 +153,11 @@ export function VodPlayerScreen({ controller, controls, channel, onBack }: VodPl
             <button className="player-back" onClick={onBack}>‹ 返回</button>
             <span className="player-title">{channel.name}</span>
           </div>
-          <button className="center-btn" onClick={() => controls.togglePlayPause()}>
-            {ui.paused ? '▶' : '❚❚'}
-          </button>
+          {/* 播放/暂停并入底部控制条，中央不再放常驻按钮（不挡画面）。 */}
           <div className="vod-bar">
+            <button className="vod-ctl" onClick={() => controls.togglePlayPause()} title={ui.paused ? '播放' : '暂停'}>
+              {ui.paused ? '▶' : '❚❚'}
+            </button>
             <button className="vod-skip" onClick={() => skip(-10)} title="后退 10 秒">« 10s</button>
             <span className="vod-time">{fmt(progress.t)}</span>
             <input
