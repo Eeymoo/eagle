@@ -1,14 +1,22 @@
 /**
- * Eagle desktop head (Tauri shell) — composition root only, mirroring
+ * Eagle desktop head (Tauri shell) — composition root, mirroring
  * rn-ui-plugin's EagleApp: platform bridge (platform.ts) + EagleCore +
  * source plugins + headless controllers + the SHARED screens from
  * @eagle/ui-screens, rendered through react-native-web.
  *
- * Desktop-only chrome lives here: app bar, centered content column,
- * browser-back handling. All screen UI is single-source in ui-screens.
+ * Navigation is react-router (URL-addressable: deep links, browser back,
+ * bookmarks) — a desktop-only concern, so it lives in this shell. Native
+ * keeps its state-machine navigation; shared screens stay navigation-
+ * agnostic via callback props (onPlay / onBack / onOpenSettings).
+ *
+ * Routes:
+ *   /                channel list
+ *   /settings        source management
+ *   /player/:channelId  fullscreen player (chrome-less)
  */
 import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { EagleCore } from '@eagle/core';
 import type { Channel, SourcePlugin } from '@eagle/core';
@@ -18,14 +26,13 @@ import { m3uTunerPlugin } from '@eagle/m3u-tuner-plugin';
 import { hdHomeRunPlugin } from '@eagle/hdhome-run-plugin';
 import { createEagleControllers } from '@eagle/headless-ui';
 import type { EagleControllers } from '@eagle/headless-ui';
+import { useChannelList } from '@eagle/headless-ui';
 import { ChannelListScreen, PlayerScreen, SettingsScreen, ToastProvider } from '@eagle/ui-screens';
 import { TauriPort, createSettingsStore, eagleUrl } from './platform.js';
 import './app.css';
 
 /** Source-plugin composition for the MVP build (same set as the RN head). */
 export const MVP_PLUGINS: SourcePlugin[] = [jellyfinPlugin, jellyfinVideoPlugin, m3uTunerPlugin, hdHomeRunPlugin];
-
-type Route = 'list' | 'player' | 'settings';
 
 export function EagleDesktopApp(): React.JSX.Element {
   const [controllers, setControllers] = useState<EagleControllers | null>(null);
@@ -42,16 +49,6 @@ export function EagleDesktopApp(): React.JSX.Element {
         setBootError(e instanceof Error ? e.message : String(e));
       }
     })();
-  }, []);
-
-  const [route, setRoute] = useState<Route>('list');
-  const [current, setCurrent] = useState<Channel | null>(null);
-
-  // Browser/desktop back button: pop player→settings→list.
-  useEffect(() => {
-    const onPop = (): void => setRoute((r) => (r === 'list' ? r : 'list'));
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
   }, []);
 
   if (bootError) {
@@ -73,57 +70,110 @@ export function EagleDesktopApp(): React.JSX.Element {
     );
   }
 
-  const play = (channel: Channel): void => {
-    setCurrent(channel);
-    setRoute('player');
-  };
+  return (
+    <SafeAreaProvider>
+      <BrowserRouter>
+        <AppRoutes controllers={controllers} />
+      </BrowserRouter>
+    </SafeAreaProvider>
+  );
+}
 
-  // Player is fullscreen chrome-less; other routes get the desktop shell.
-  if (route === 'player' && current) {
-    return (
-      <SafeAreaProvider>
-        <View style={styles.playerRoot}>
-          <PlayerScreen
-            controller={controllers.player}
-            controls={controllers.playerControls}
-            channel={current}
-            onBack={() => setRoute('list')}
+function AppRoutes({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  return (
+    <Routes>
+      <Route path="/" element={<ListRoute controllers={controllers} />} />
+      <Route path="/settings" element={<SettingsRoute controllers={controllers} />} />
+      <Route path="/player/:channelId" element={<PlayerRoute controllers={controllers} />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+/** Channel list inside the desktop shell (app bar + centered column). */
+function ListRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const navigate = useNavigate();
+
+  return (
+    <ToastProvider>
+      <View style={styles.root}>
+        <View style={styles.shell}>
+          <View style={styles.appBar}>
+            <Text style={styles.brand}>Eagle</Text>
+            <Text style={styles.brandSub}>直播</Text>
+          </View>
+          <ChannelListScreen
+            controller={controllers.channelList}
+            health={controllers.health}
+            onPlay={(channel) => navigate(`/player/${encodeURIComponent(channel.id)}`)}
+            onOpenSettings={() => navigate('/settings')}
           />
         </View>
-      </SafeAreaProvider>
+      </View>
+    </ToastProvider>
+  );
+}
+
+function SettingsRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const navigate = useNavigate();
+
+  return (
+    <ToastProvider>
+      <View style={styles.root}>
+        <View style={styles.shell}>
+          <SettingsScreen
+            form={controllers.addSourceForm}
+            sources={controllers.sources}
+            health={controllers.health}
+            onBack={() => navigate('/')}
+          />
+        </View>
+      </View>
+    </ToastProvider>
+  );
+}
+
+/**
+ * Player route: resolves the channel by URL param. Deep links land here
+ * before the list has loaded — wait for it, then play. Unknown ids bounce
+ * back to the list.
+ */
+function PlayerRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const { channelId = '' } = useParams();
+  const navigate = useNavigate();
+  const list = useChannelList(controllers.channelList);
+
+  // Deep link lands here without the list screen ever mounting — kick the
+  // (idempotent) load ourselves so the channel can be resolved.
+  useEffect(() => {
+    void controllers.channelList.refresh();
+  }, [controllers.channelList]);
+
+  const id = decodeURIComponent(channelId);
+  const channel: Channel | undefined = list.channels.find((c) => c.id === id);
+
+  // Not found once loaded → back to list (bad bookmark / removed source).
+  useEffect(() => {
+    if (list.status === 'ready' && !channel) navigate('/', { replace: true });
+  }, [list.status, channel, navigate]);
+
+  if (!channel) {
+    return (
+      <View style={styles.playerRoot}>
+        <Text style={styles.hint}>频道加载中…</Text>
+      </View>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <ToastProvider>
-      <View style={styles.root}>
-        <View style={styles.shell}>
-          {route === 'settings' ? (
-            <SettingsScreen
-              form={controllers.addSourceForm}
-              sources={controllers.sources}
-              health={controllers.health}
-              onBack={() => setRoute('list')}
-            />
-          ) : (
-            <>
-              <View style={styles.appBar}>
-                <Text style={styles.brand}>Eagle</Text>
-                <Text style={styles.brandSub}>直播</Text>
-              </View>
-              <ChannelListScreen
-                controller={controllers.channelList}
-                health={controllers.health}
-                onPlay={play}
-                onOpenSettings={() => setRoute('settings')}
-              />
-            </>
-          )}
-        </View>
-      </View>
-      </ToastProvider>
-    </SafeAreaProvider>
+    <View style={styles.playerRoot}>
+      <PlayerScreen
+        controller={controllers.player}
+        controls={controllers.playerControls}
+        channel={channel}
+        onBack={() => navigate('/')}
+      />
+    </View>
   );
 }
 
