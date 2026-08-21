@@ -27,11 +27,41 @@ function eagleProxy(): Plugin {
           res.end('eagle-proxy: absolute http(s) URL required');
           return;
         }
+        // CORS preflight for proxied POSTs with custom headers.
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS');
+          res.setHeader(
+            'Access-Control-Allow-Headers',
+            req.headers['access-control-request-headers'] ?? 'Content-Type, Authorization, X-Emby-Authorization, Range',
+          );
+          res.setHeader('Access-Control-Max-Age', '86400');
+          res.end();
+          return;
+        }
         void (async () => {
           try {
+            // Forward body + meaningful headers (Content-Type, auth headers
+            // like X-Emby-Authorization) — POST logins (Jellyfin) need them.
+            const body = await new Promise<Buffer | null>((resolve) => {
+              const chunks: Buffer[] = [];
+              req.on('data', (c: Buffer) => chunks.push(c));
+              req.on('end', () => resolve(Buffer.concat(chunks)));
+              req.on('error', () => resolve(null));
+            });
+            const fwd: Record<string, string> = {
+              'User-Agent': 'Eagle/0.1',
+              Accept: req.headers.accept ?? '*/*',
+            };
+            for (const h of ['content-type', 'x-emby-authorization', 'authorization', 'range']) {
+              const v = req.headers[h];
+              if (typeof v === 'string') fwd[h] = v;
+            }
             const upstream = await fetch(target, {
               method: req.method,
-              headers: { 'User-Agent': 'Eagle/0.1', Accept: req.headers.accept ?? '*/*' },
+              headers: fwd,
+              body: body && body.length > 0 && req.method !== 'GET' && req.method !== 'HEAD' ? body : undefined,
               redirect: 'follow',
             });
             const cache = upstream.headers.get('cache-control');
