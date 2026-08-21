@@ -49,6 +49,16 @@ export function withParams(url: string, params: Record<string, string>): string 
 const CLIENT_HEADER =
   'MediaBrowser Client="Eagle", Device="Eagle RN", DeviceId="eagle-mvp-1", Version="0.1.0"';
 
+/**
+ * Auth header carriers across Jellyfin versions: legacy servers read
+ * X-Emby-Authorization, Jellyfin 12 requires the standard Authorization
+ * header. Send both — servers ignore the one they don't know.
+ */
+const AUTH_HEADERS: Record<string, string> = {
+  Authorization: CLIENT_HEADER,
+  'X-Emby-Authorization': CLIENT_HEADER,
+};
+
 export class JellyfinSource extends LiveSourceBase {
   readonly kind = 'jellyfin' as const;
   readonly sourceId: string;
@@ -123,7 +133,7 @@ export async function authenticate(port: Port, config: JellyfinConfig): Promise<
     const result = await port.postJson<JellyfinAuthResult>(
       url,
       { Username: config.username, Pw: config.password },
-      { headers: { 'X-Emby-Authorization': CLIENT_HEADER } },
+      { headers: AUTH_HEADERS },
     );
     if (!result?.AccessToken || !result?.User?.Id) {
       throw new CoreError('AUTH_FAILED', 'Jellyfin: malformed auth response');
