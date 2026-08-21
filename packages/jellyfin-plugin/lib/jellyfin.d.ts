@@ -9,6 +9,8 @@ export interface JellyfinSession {
     userId: string;
     accessToken: string;
     username?: string;
+    /** Retained for silent re-login when the token is invalidated. */
+    password?: string;
 }
 export interface JellyfinConfig {
     serverUrl: string;
@@ -24,11 +26,17 @@ export declare function joinUrl(base: string, path: string): string;
 export declare function withParams(url: string, params: Record<string, string>): string;
 export declare class JellyfinSource extends LiveSourceBase {
     private readonly port;
-    private readonly session;
+    private session;
     readonly kind: "jellyfin";
     readonly sourceId: string;
     constructor(port: Port, session: JellyfinSession, sourceId?: string);
     private authHeaders;
+    /**
+     * Run an authenticated JSON call, silently re-loginning and retrying once
+     * when the stored token was invalidated (each new login invalidates older
+     * tokens on Jellyfin 12).
+     */
+    private authedJson;
     listChannels(_opts?: ListChannelsOpts): Promise<ChannelPage>;
     resolveStream(channelId: string): Promise<StreamUrl>;
     private toChannel;

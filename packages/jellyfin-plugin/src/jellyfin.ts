@@ -11,6 +11,8 @@ export interface JellyfinSession {
   userId: string;
   accessToken: string;
   username?: string;
+  /** Retained for silent re-login when the token is invalidated. */
+  password?: string;
 }
 
 export interface JellyfinConfig {
@@ -65,7 +67,7 @@ export class JellyfinSource extends LiveSourceBase {
 
   constructor(
     private readonly port: Port,
-    private readonly session: JellyfinSession,
+    private session: JellyfinSession,
     sourceId = 'jellyfin',
   ) {
     super();
@@ -80,14 +82,35 @@ export class JellyfinSource extends LiveSourceBase {
     };
   }
 
+  /**
+   * Run an authenticated JSON call, silently re-loginning and retrying once
+   * when the stored token was invalidated (each new login invalidates older
+   * tokens on Jellyfin 12).
+   */
+  private async authedJson<T>(url: string, init?: { headers?: Record<string, string>; timeoutMs?: number }): Promise<T> {
+    const attempt = (): Promise<T> => this.port.getJson<T>(url, { ...init, headers: { ...init?.headers, ...this.authHeaders() } });
+    try {
+      return await attempt();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const causeMsg = e instanceof CoreError && e.cause instanceof Error ? e.cause.message : '';
+      const unauthorized = /401|unauthorized/i.test(`${msg} ${causeMsg}`);
+      if (!unauthorized || !this.session.username || this.session.password === undefined) throw e;
+      this.session = await authenticate(this.port, {
+        serverUrl: this.session.serverUrl,
+        username: this.session.username,
+        password: this.session.password,
+      });
+      return await attempt();
+    }
+  }
+
   async listChannels(_opts?: ListChannelsOpts): Promise<ChannelPage> {
     const url = withParams(joinUrl(this.session.serverUrl, 'LiveTv/Channels'), {
       EnableImages: 'true',
       ImageTypeLimit: '1',
     });
-    const dto = await this.port.getJson<{ Items?: JellyfinChannelDto[] }>(url, {
-      headers: this.authHeaders(),
-    });
+    const dto = await this.authedJson<{ Items?: JellyfinChannelDto[] }>(url);
     const channels = (dto.Items ?? []).map((item) => this.toChannel(item));
     return { channels, nextCursor: undefined };
   }

@@ -85,3 +85,39 @@ describe('jellyfin-video', () => {
     expect(source.kind).toBe('jellyfin-video');
   });
 });
+
+describe('jellyfin-video re-login', () => {
+  it('re-authenticates silently when the stored token gets 401', async () => {
+    // First page fetch 401s with the stale token; re-login returns a fresh
+    // session and the retry succeeds.
+    const LIST_URL =
+      'http://jf.local/Users/u1/Items?IncludeItemTypes=Movie%2CEpisode&Recursive=true&SortBy=SortName&SortOrder=Ascending&StartIndex=0&Limit=500&EnableImages=true&ImageTypeLimit=1';
+    let calls = 0;
+    const port = new MemoryPort();
+    port.stubJson(LIST_URL, { Items: [{ Id: 'm0', Name: 'Movie 0', Type: 'Movie' }], TotalRecordCount: 1 });
+    port.stubPost('http://jf.local/Users/AuthenticateByName', {
+      User: { Id: 'u1', Name: 'user' },
+      AccessToken: 'freshTok',
+      ServerId: 's1',
+    });
+    const origGetJson = port.getJson.bind(port);
+    (port as { getJson: unknown }).getJson = async (url: string, init?: { headers?: Record<string, string> }) => {
+      calls++;
+      if (calls === 1 && init?.headers?.Authorization?.includes('stale')) {
+        // Match the shape real Ports throw on 401 (message carries the code).
+        throw new Error('GET https://jf.local/... failed: 401');
+      }
+      return origGetJson(url);
+    };
+    const source = new JellyfinVideoSource(port, {
+      serverUrl: 'http://jf.local',
+      userId: 'u1',
+      accessToken: 'stale',
+      username: 'user',
+      password: 'pw',
+    });
+    const { channels } = await source.listChannels();
+    expect(channels.length).toBe(1);
+    expect(calls).toBe(2); // initial 401 + retry
+  });
+});

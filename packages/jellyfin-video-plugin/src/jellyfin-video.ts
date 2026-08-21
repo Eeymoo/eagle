@@ -42,7 +42,7 @@ export class JellyfinVideoSource extends LiveSourceBase {
 
   constructor(
     private readonly port: Port,
-    private readonly session: JellyfinSession,
+    private session: JellyfinSession,
     sourceId = 'jellyfin-video',
   ) {
     super();
@@ -55,6 +55,28 @@ export class JellyfinVideoSource extends LiveSourceBase {
       Accept: 'application/json',
       Authorization: `MediaBrowser Token="${this.session.accessToken}"`,
     };
+  }
+
+  /**
+   * Authenticated GET with silent re-login + single retry when the stored
+   * token was invalidated (each new Jellyfin 12 login kills older tokens).
+   */
+  private async authedJson<T>(url: string, init?: { headers?: Record<string, string>; timeoutMs?: number }): Promise<T> {
+    const attempt = (): Promise<T> => this.port.getJson<T>(url, { ...init, headers: { ...init?.headers, ...this.authHeaders() } });
+    try {
+      return await attempt();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const causeMsg = e instanceof CoreError && e.cause instanceof Error ? e.cause.message : '';
+      const unauthorized = /401|unauthorized/i.test(`${msg} ${causeMsg}`);
+      if (!unauthorized || !this.session.username || this.session.password === undefined) throw e;
+      this.session = await authenticate(this.port, {
+        serverUrl: this.session.serverUrl,
+        username: this.session.username,
+        password: this.session.password,
+      });
+      return await attempt();
+    }
   }
 
   async listChannels(opts?: ListChannelsOpts): Promise<ChannelPage> {
@@ -78,10 +100,7 @@ export class JellyfinVideoSource extends LiveSourceBase {
       );
       let dto: { Items?: ItemDto[]; TotalRecordCount?: number };
       try {
-        dto = await this.port.getJson<{ Items?: ItemDto[]; TotalRecordCount?: number }>(url, {
-          headers: this.authHeaders(),
-          timeoutMs: 15_000,
-        });
+        dto = await this.authedJson<{ Items?: ItemDto[]; TotalRecordCount?: number }>(url, { timeoutMs: 15_000 });
       } catch (e) {
         if (channels.length > 0) break; // partial list beats nothing
         throw e instanceof CoreError
@@ -185,11 +204,13 @@ export const jellyfinVideoPlugin: SourcePlugin = {
       throw new CoreError('PARSE', 'Jellyfin 媒体库: serverUrl and username are required');
     }
     const session = await authenticate(port, config);
+    // Persist credentials for silent re-login (see authedJson).
+    const state = { session: { ...session, password: config.password } };
     const id = `jellyfin-video:${port.hash(config.serverUrl)}`;
     return {
       id,
       label: label ?? `${config.serverUrl} 媒体库`,
-      state: { session } as unknown as Record<string, unknown>,
+      state: state as unknown as Record<string, unknown>,
     };
   },
 

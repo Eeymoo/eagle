@@ -35,6 +35,29 @@ export class JellyfinVideoSource extends LiveSourceBase {
             Authorization: `MediaBrowser Token="${this.session.accessToken}"`,
         };
     }
+    /**
+     * Authenticated GET with silent re-login + single retry when the stored
+     * token was invalidated (each new Jellyfin 12 login kills older tokens).
+     */
+    async authedJson(url, init) {
+        const attempt = () => this.port.getJson(url, { ...init, headers: { ...init?.headers, ...this.authHeaders() } });
+        try {
+            return await attempt();
+        }
+        catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            const causeMsg = e instanceof CoreError && e.cause instanceof Error ? e.cause.message : '';
+            const unauthorized = /401|unauthorized/i.test(`${msg} ${causeMsg}`);
+            if (!unauthorized || !this.session.username || this.session.password === undefined)
+                throw e;
+            this.session = await authenticate(this.port, {
+                serverUrl: this.session.serverUrl,
+                username: this.session.username,
+                password: this.session.password,
+            });
+            return await attempt();
+        }
+    }
     async listChannels(opts) {
         if (!opts?.force && this.cache)
             return { channels: this.cache, nextCursor: undefined };
@@ -53,10 +76,7 @@ export class JellyfinVideoSource extends LiveSourceBase {
             });
             let dto;
             try {
-                dto = await this.port.getJson(url, {
-                    headers: this.authHeaders(),
-                    timeoutMs: 15_000,
-                });
+                dto = await this.authedJson(url, { timeoutMs: 15_000 });
             }
             catch (e) {
                 if (channels.length > 0)
@@ -149,11 +169,13 @@ export const jellyfinVideoPlugin = {
             throw new CoreError('PARSE', 'Jellyfin 媒体库: serverUrl and username are required');
         }
         const session = await authenticate(port, config);
+        // Persist credentials for silent re-login (see authedJson).
+        const state = { session: { ...session, password: config.password } };
         const id = `jellyfin-video:${port.hash(config.serverUrl)}`;
         return {
             id,
             label: label ?? `${config.serverUrl} 媒体库`,
-            state: { session },
+            state: state,
         };
     },
     create(port, connection) {

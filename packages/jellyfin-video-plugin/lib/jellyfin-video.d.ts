@@ -16,7 +16,7 @@ export type JellyfinVideoChannel = Channel & {
 };
 export declare class JellyfinVideoSource extends LiveSourceBase {
     private readonly port;
-    private readonly session;
+    private session;
     readonly kind: "jellyfin-video";
     readonly sourceId: string;
     private cache?;
@@ -24,6 +24,11 @@ export declare class JellyfinVideoSource extends LiveSourceBase {
     private byId;
     constructor(port: Port, session: JellyfinSession, sourceId?: string);
     private authHeaders;
+    /**
+     * Authenticated GET with silent re-login + single retry when the stored
+     * token was invalidated (each new Jellyfin 12 login kills older tokens).
+     */
+    private authedJson;
     listChannels(opts?: ListChannelsOpts): Promise<ChannelPage>;
     private toChannel;
     resolveStream(channelId: string): Promise<StreamUrl>;

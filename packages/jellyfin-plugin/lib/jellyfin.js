@@ -10,6 +10,15 @@ export function withParams(url, params) {
     return qs ? `${url}?${qs}` : url;
 }
 const CLIENT_HEADER = 'MediaBrowser Client="Eagle", Device="Eagle RN", DeviceId="eagle-mvp-1", Version="0.1.0"';
+/**
+ * Auth header carriers across Jellyfin versions: legacy servers read
+ * X-Emby-Authorization, Jellyfin 12 requires the standard Authorization
+ * header. Send both — servers ignore the one they don't know.
+ */
+const AUTH_HEADERS = {
+    Authorization: CLIENT_HEADER,
+    'X-Emby-Authorization': CLIENT_HEADER,
+};
 export class JellyfinSource extends LiveSourceBase {
     port;
     session;
@@ -22,16 +31,42 @@ export class JellyfinSource extends LiveSourceBase {
         this.sourceId = sourceId;
     }
     authHeaders() {
-        return { Accept: 'application/json', 'X-Emby-Token': this.session.accessToken };
+        // Jellyfin 12: standard Authorization header; legacy X-Emby-Token → 401.
+        return {
+            Accept: 'application/json',
+            Authorization: `MediaBrowser Token="${this.session.accessToken}"`,
+        };
+    }
+    /**
+     * Run an authenticated JSON call, silently re-loginning and retrying once
+     * when the stored token was invalidated (each new login invalidates older
+     * tokens on Jellyfin 12).
+     */
+    async authedJson(url, init) {
+        const attempt = () => this.port.getJson(url, { ...init, headers: { ...init?.headers, ...this.authHeaders() } });
+        try {
+            return await attempt();
+        }
+        catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            const causeMsg = e instanceof CoreError && e.cause instanceof Error ? e.cause.message : '';
+            const unauthorized = /401|unauthorized/i.test(`${msg} ${causeMsg}`);
+            if (!unauthorized || !this.session.username || this.session.password === undefined)
+                throw e;
+            this.session = await authenticate(this.port, {
+                serverUrl: this.session.serverUrl,
+                username: this.session.username,
+                password: this.session.password,
+            });
+            return await attempt();
+        }
     }
     async listChannels(_opts) {
         const url = withParams(joinUrl(this.session.serverUrl, 'LiveTv/Channels'), {
             EnableImages: 'true',
             ImageTypeLimit: '1',
         });
-        const dto = await this.port.getJson(url, {
-            headers: this.authHeaders(),
-        });
+        const dto = await this.authedJson(url);
         const channels = (dto.Items ?? []).map((item) => this.toChannel(item));
         return { channels, nextCursor: undefined };
     }
@@ -39,14 +74,34 @@ export class JellyfinSource extends LiveSourceBase {
         const bare = channelId.replace(/^jf:/, '');
         if (!bare)
             throw new CoreError('NOT_FOUND', `Jellyfin: bad channel id "${channelId}"`);
-        const url = joinUrl(this.session.serverUrl, `LiveTv/Channels/${bare}/Play`);
+        // Jellyfin 12: /LiveTv/Channels/{id}/Play is gone; the HLS live stream
+        // is videos/{id}/master.m3u8 (server remuxes even remote IPTV sources).
+        // Query-param auth (api_key) is unreliable on 12 — pass the token as an
+        // Authorization header; players inject it (hls.js xhrSetup / native
+        // source headers). MediaSourceId comes from PlaybackInfo.
+        let mediaSourceId;
+        try {
+            const postJson = this.port.postJson?.bind(this.port);
+            const pbi = postJson
+                ? await postJson(joinUrl(this.session.serverUrl, `Items/${bare}/PlaybackInfo`), { UserId: this.session.userId }, { headers: this.authHeaders(), timeoutMs: 10_000 })
+                : undefined;
+            mediaSourceId = pbi?.MediaSources?.[0]?.Id ?? undefined;
+        }
+        catch {
+            // PlaybackInfo is optional; master.m3u8 works without MediaSourceId
+            // when the item has a single source.
+        }
+        const streamUrl = withParams(joinUrl(this.session.serverUrl, `videos/${bare}/master.m3u8`), {
+            ...(mediaSourceId ? { MediaSourceId: mediaSourceId } : {}),
+        });
         return {
-            // Direct stream: MVP players handle the raw ts container better than
-            // full PlaybackInfo negotiation; api_key auth keeps players header-free.
-            url: withParams(url, { api_key: this.session.accessToken }),
-            kind: 'jellyfin-http',
-            containerHint: 'ts',
-            headers: { 'X-Emby-Token': this.session.accessToken },
+            url: streamUrl,
+            kind: 'jellyfin-hls',
+            containerHint: 'm3u8',
+            headers: {
+                // Jellyfin 12 accepts ONLY this header form (X-Emby-Token → 401).
+                Authorization: `MediaBrowser Token="${this.session.accessToken}"`,
+            },
         };
     }
     toChannel(item) {
@@ -76,7 +131,7 @@ export async function authenticate(port, config) {
     }
     const url = joinUrl(config.serverUrl, 'Users/AuthenticateByName');
     try {
-        const result = await port.postJson(url, { Username: config.username, Pw: config.password }, { headers: { 'X-Emby-Authorization': CLIENT_HEADER } });
+        const result = await port.postJson(url, { Username: config.username, Pw: config.password }, { headers: AUTH_HEADERS });
         if (!result?.AccessToken || !result?.User?.Id) {
             throw new CoreError('AUTH_FAILED', 'Jellyfin: malformed auth response');
         }

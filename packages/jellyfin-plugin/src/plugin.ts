@@ -31,11 +31,14 @@ export const jellyfinPlugin: SourcePlugin = {
       throw new CoreError('PARSE', 'Jellyfin: serverUrl and username are required');
     }
     const session = await authenticate(port, config);
+    // Persist credentials inside the session for silent re-login when the
+    // token gets invalidated (Jellyfin 12 kills older tokens per login).
+    const state = { session: { ...session, password: config.password } };
     const id = `jellyfin:${port.hash(config.serverUrl)}`;
     return {
       id,
       label: label ?? config.serverUrl,
-      state: { session } as unknown as Record<string, unknown>,
+      state: state as unknown as Record<string, unknown>,
     };
   },
 
