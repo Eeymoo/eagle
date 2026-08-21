@@ -1,7 +1,7 @@
 {
   "name": "@eagle/ui-screens",
   "version": "0.1.0",
-  "description": "Eagle shared pure-headed screens — one RN-syntax codebase rendered by Metro (native) and react-native-web (desktop)",
+  "description": "Eagle shared pure-headed screens \u2014 one RN-syntax codebase rendered by Metro (native) and react-native-web (desktop)",
   "license": "MIT",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@eagle/core": "workspace:*",
-    "@eagle/headless-ui": "workspace:*",
     "@eagle/design-tokens": "workspace:*",
+    "@eagle/headless-ui": "workspace:*",
     "hls.js": "^1.5.20"
   },
   "peerDependencies": {

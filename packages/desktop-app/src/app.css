@@ -189,3 +189,75 @@ body {
   justify-content: center;
 }
 .vod-ctl:hover { background: rgba(14, 17, 22, 0.85); }
+
+/* Vidstack VOD player fills the frame */
+.vod-root { background: #000; }
+.vod-player {
+  width: 100%;
+  height: 100%;
+  --video-border-radius: 0;
+  --media-brand: #5b89ff;
+}
+/* App-level back button floating above the Vidstack chrome */
+.vod-back-fab {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 30;
+  background: rgba(14, 17, 22, 0.65);
+  border: none;
+  border-radius: 999px;
+  color: #e8ecf1;
+  font-size: 18px;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  display: none; /* shown only while Vidstack controls visible */
+  align-items: center;
+  justify-content: center;
+}
+.vod-player[data-media-controls-visible] ~ .vod-back-fab,
+.vod-root:hover .vod-back-fab { display: inline-flex; }
+
+/* VOD enhanced chrome: seek wrap w/ buffered range, volume, speed, tools */
+.vod-seekwrap { position: relative; flex: 1; display: flex; align-items: center; height: 18px; }
+.vod-buffer {
+  position: absolute;
+  left: 0; top: 7px;
+  height: 4px;
+  width: 0;
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.vod-seekwrap .vod-seek { position: relative; width: 100%; margin: 0; }
+.vod-tool {
+  background: rgba(14, 17, 22, 0.65);
+  color: #d6dbe3;
+  border: none;
+  border-radius: 999px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.vod-tool:hover { color: #fff; }
+.vod-speed { font-variant-numeric: tabular-nums; }
+.vod-vol {
+  width: 72px;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.vod-vol::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: #d6dbe3;
+  border: none;
+}
