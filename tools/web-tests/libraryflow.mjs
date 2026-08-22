@@ -23,8 +23,18 @@ await page.goto('http://localhost:1420/', { waitUntil: 'domcontentloaded' });
 await page.evaluate(() => localStorage.clear());
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForTimeout(400);
-await page.getByText('⚙︎').click();
-await page.waitForTimeout(400);
+await page.getByText('设置', { exact: true }).first().click();
+await page.waitForTimeout(800);
+await page.evaluate(() => {
+  const el = Array.from(document.querySelectorAll('div,span')).find((e) => e.childElementCount === 0 && (e.textContent ?? '').trim() === '数据源');
+  el?.closest('div')?.click();
+});
+await page.waitForTimeout(800);
+await page.evaluate(() => {
+  const el = Array.from(document.querySelectorAll('div,span')).find((e) => e.childElementCount === 0 && (e.textContent ?? '').trim() === '源管理');
+  el?.closest('div')?.click();
+});
+await page.waitForTimeout(800);
 await page.getByText('Jellyfin 媒体库').last().click();
 await page.waitForTimeout(300);
 const set = async (ph, v) => page.evaluate(([p, val]) => {
@@ -89,8 +99,12 @@ if (!page.url().includes('/player/')) {
   await page.waitForTimeout(9000);
   console.log('3e. after wait url:', page.url().slice(-30), '| body:', JSON.stringify((await text()).slice(0, 50)));
 }
-await page.waitForTimeout(2500);
-const mounted = (await page.locator('.player-root').count()) > 0;
+// wait for player mount (list load + stream resolve vary with server mood)
+let mounted = false;
+for (let i = 0; i < 10 && !mounted; i++) {
+  await page.waitForTimeout(1500);
+  mounted = (await page.locator('.player-root, video').count()) > 0;
+}
 console.log('4. player mounted from wall click:', mounted, '| url has t:', /player\//.test(page.url()));
 
 // --- 5. pause at ~2min → progress recorded --------------------------------

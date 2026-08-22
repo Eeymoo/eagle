@@ -19,7 +19,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Navigate, RouterProvider, createBrowserRouter, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, Outlet, RouterProvider, createBrowserRouter, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { EagleCore } from '@eagle/core';
 import type { Channel, LibraryItem, MediaLibrary, SourcePlugin } from '@eagle/core';
@@ -34,6 +34,10 @@ import {
   ChannelListScreen, LibraryBrowseScreen, LibraryHomeScreen, PlayerScreen,
   SeriesScreen, SettingsScreen, ToastProvider, VodPlayerScreen,
 } from '@eagle/ui-screens';
+import { AppShellLayout, AppShellNav } from '@eagle/ui-nav';
+import type { NavItem } from '@eagle/ui-nav';
+import { SettingsHubScreen, SettingsSectionScreen } from '@eagle/settings-ui';
+import type { SettingsSchema } from '@eagle/settings-ui';
 import { TauriPort, createSettingsStore, eagleUrl } from './platform.js';
 import './app.css';
 
@@ -93,18 +97,47 @@ function AppRouter({ controllers }: { controllers: EagleControllers }): React.JS
   const router = useMemo(
     () =>
       createBrowserRouter([
-        { path: '/', element: <HomeRoute controllers={controllers} /> },
-        { path: '/live', element: <ListRoute controllers={controllers} /> },
-        { path: '/settings', element: <SettingsRoute controllers={controllers} /> },
+        {
+          path: '/',
+          element: <ShellRoute controllers={controllers} />,
+          children: [
+            { index: true, element: <HomeRoute controllers={controllers} /> },
+            { path: 'live', element: <ListRoute controllers={controllers} /> },
+            { path: 'settings', element: <SettingsHubRoute controllers={controllers} /> },
+            { path: 'settings/section/:sectionId', element: <SettingsSectionRoute controllers={controllers} /> },
+            { path: 'settings/page/:pageId', element: <SettingsPageRoute controllers={controllers} /> },
+            { path: 'library', element: <LibraryRoute controllers={controllers} /> },
+            { path: 'library/:viewId', element: <LibraryBrowseRoute controllers={controllers} /> },
+            { path: 'series/:seriesId', element: <SeriesRoute controllers={controllers} /> },
+          ],
+        },
         { path: '/player/:channelId', element: <PlayerRoute controllers={controllers} /> },
-        { path: '/library', element: <LibraryRoute controllers={controllers} /> },
-        { path: '/library/:viewId', element: <LibraryBrowseRoute controllers={controllers} /> },
-        { path: '/series/:seriesId', element: <SeriesRoute controllers={controllers} /> },
         { path: '*', element: <Navigate to="/" replace /> },
       ]),
     [controllers],
   );
   return <RouterProvider router={router} />;
+}
+
+/**
+ * App shell: shared navigation (@eagle/ui-nav) — bottom tab bar on phones,
+ * left rail on desktop. Player stays chrome-less (outside the shell).
+ */
+function ShellRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const first = location.pathname.split('/')[1] || '';
+  const activeId = first === '' ? 'library' : first;
+  const items: NavItem[] = [
+    { id: 'library', label: '媒体库', onPress: () => navigate('/library') },
+    { id: 'live', label: '直播', onPress: () => navigate('/live') },
+    { id: 'settings', label: '设置', onPress: () => navigate('/settings') },
+  ];
+  return (
+    <AppShellLayout nav={<AppShellNav items={items} activeId={activeId} />}>
+      <Outlet />
+    </AppShellLayout>
+  );
 }
 
 /**
@@ -131,13 +164,6 @@ function ListRoute({ controllers }: { controllers: EagleControllers }): React.JS
     <ToastProvider>
       <View style={styles.root}>
         <View style={styles.shell}>
-          <View style={styles.appBar}>
-            <Pressable hitSlop={8} onPress={() => navigate('/')}>
-              <Text style={styles.brand}>‹ Eagle</Text>
-            </Pressable>
-            <Text style={styles.brandSub}>直播</Text>
-            <View style={styles.appBarSpacer} />
-          </View>
           <ChannelListScreen
             controller={controllers.channelList}
             health={controllers.health}
@@ -150,23 +176,116 @@ function ListRoute({ controllers }: { controllers: EagleControllers }): React.JS
   );
 }
 
-function SettingsRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
-  const navigate = useNavigate();
+// ---------------------------------------------------------------------------
+// Settings (@eagle/settings-ui): schema-driven hub → section → custom pages.
+// ---------------------------------------------------------------------------
 
+/** Eagle's declared settings; values persist via the core settings store. */
+function eagleSettingsSchema(): SettingsSchema {
+  return {
+    sections: [
+      {
+        id: 'sources',
+        title: '数据源',
+        description: '添加 / 移除 Jellyfin、M3U、HDHomeRun 源',
+        items: [{ type: 'page', pageId: 'sources', label: '源管理', description: '添加、查看与移除播放源' }],
+      },
+      {
+        id: 'playback',
+        title: '播放与健康检查',
+        description: '频道体检、坏台过滤',
+        items: [
+          { type: 'toggle', key: 'health.checkOnRefresh', label: '刷新时体检', description: '每次刷新频道列表后自动探测可用性' },
+          { type: 'toggle', key: 'health.hideBad', label: '隐藏坏台', description: '体检失败的频道从列表中隐藏' },
+          { type: 'select', key: 'play.preferStream', label: '优先流类型', options: [
+            { value: 'direct', label: '直连（省资源）' },
+            { value: 'transcode', label: '转码（兼容性最好）' },
+          ] },
+          { type: 'multi', key: 'play.tools', label: '播放器快捷功能', options: [
+            { value: 'speed', label: '倍速' },
+            { value: 'volume', label: '音量' },
+            { value: 'buffer', label: '缓冲显示' },
+          ] },
+        ],
+      },
+    ],
+  };
+}
+
+/** Custom settings pages (fully custom development per page id). */
+function settingsPages(controllers: EagleControllers): Record<string, React.JSX.Element> {
+  return {
+    sources: (
+      <SettingsScreen
+        form={controllers.addSourceForm}
+        sources={controllers.sources}
+        health={controllers.health}
+        onBack={undefined}
+      />
+    ),
+  };
+}
+
+function SettingsHubRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const navigate = useNavigate();
+  const schema = useMemo(() => eagleSettingsSchema(), []);
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  useEffect(() => {
+    void (async () => {
+      const store = controllers.settingsStore;
+      const out: Record<string, unknown> = {};
+      for (const sec of schema.sections)
+        for (const item of sec.items)
+          if ('key' in item) out[item.key] = (await store.get<unknown>(item.key)) ?? undefined;
+      setValues(out);
+    })();
+  }, [controllers, schema]);
   return (
-    <ToastProvider>
-      <View style={styles.root}>
-        <View style={styles.shell}>
-          <SettingsScreen
-            form={controllers.addSourceForm}
-            sources={controllers.sources}
-            health={controllers.health}
-            onBack={() => navigate('/')}
-          />
-        </View>
-      </View>
-    </ToastProvider>
+    <SettingsHubScreen
+      schema={schema}
+      values={values}
+      onOpenSection={(id) => navigate(`/settings/section/${id}`)}
+      onOpenPage={(id) => navigate(`/settings/page/${id}`)}
+    />
   );
+}
+
+function SettingsSectionRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const { sectionId = '' } = useParams();
+  const navigate = useNavigate();
+  const schema = useMemo(() => eagleSettingsSchema(), []);
+  const section = schema.sections.find((s) => s.id === sectionId);
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  useEffect(() => {
+    if (!section) return;
+    void (async () => {
+      const store = controllers.settingsStore;
+      const out: Record<string, unknown> = {};
+      for (const item of section.items)
+        if ('key' in item) out[item.key] = (await store.get<unknown>(item.key)) ?? undefined;
+      setValues(out);
+    })();
+  }, [section, controllers]);
+  if (!section) return <Navigate to="/settings" replace />;
+  return (
+    <SettingsSectionScreen
+      section={section}
+      values={values}
+      onChange={(key, value) => {
+        setValues((v) => ({ ...v, [key]: value }));
+        void controllers.settingsStore.set(key, value);
+      }}
+      onOpenPage={(id) => navigate(`/settings/page/${id}`)}
+    />
+  );
+}
+
+function SettingsPageRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const { pageId = '' } = useParams();
+  const pages = useMemo(() => settingsPages(controllers), [controllers]);
+  const page = pages[pageId];
+  if (!page) return <Navigate to="/settings" replace />;
+  return <ToastProvider><View style={styles.root}>{page}</View></ToastProvider>;
 }
 
 /**

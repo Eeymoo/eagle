@@ -16,6 +16,8 @@ import type { MediaLibrary, LibraryItem } from '@eagle/core';
 import type { EagleCore } from '@eagle/core';
 
 export interface EagleControllers {
+  /** Raw settings store for schema-driven settings UIs. */
+  settingsStore: import('@eagle/core').SettingsStore;
   channelList: ChannelListController;
   addSourceForm: AddSourceFormController;
   sources: SourcesController;
@@ -127,5 +129,5 @@ export function createEagleControllers(
     if (st.status === 'playing') health.markOk(st.channel.id);
   });
 
-  return { channelList, addSourceForm, sources, player, health, playerControls, watchProgress, library };
+  return { settingsStore: core.settingsStore, channelList, addSourceForm, sources, player, health, playerControls, watchProgress, library };
 }

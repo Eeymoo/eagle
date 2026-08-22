@@ -14,7 +14,7 @@ export interface SettingsScreenProps {
   form: AddSourceFormController;
   sources: SourcesController;
   health: HealthController;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 export function SettingsScreen({ form, sources, health, onBack }: SettingsScreenProps) {
@@ -36,7 +36,7 @@ export function SettingsScreen({ form, sources, health, onBack }: SettingsScreen
     const st = form.getState();
     if (st.status === 'success') {
       toast.show({ message: '已添加，正在体检新频道…', kind: 'success' });
-      onBack();
+      onBack?.();
     } else if (st.status === 'error' && st.errorMessage) {
       toast.show({ message: `添加失败：${st.errorMessage}`, kind: 'error', duration: 4000 });
     }
