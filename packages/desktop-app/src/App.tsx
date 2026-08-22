@@ -18,7 +18,7 @@
  *   /series/:seriesId  series detail (episode list)
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Navigate, RouterProvider, createBrowserRouter, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { EagleCore } from '@eagle/core';
@@ -93,7 +93,8 @@ function AppRouter({ controllers }: { controllers: EagleControllers }): React.JS
   const router = useMemo(
     () =>
       createBrowserRouter([
-        { path: '/', element: <ListRoute controllers={controllers} /> },
+        { path: '/', element: <HomeRoute controllers={controllers} /> },
+        { path: '/live', element: <ListRoute controllers={controllers} /> },
         { path: '/settings', element: <SettingsRoute controllers={controllers} /> },
         { path: '/player/:channelId', element: <PlayerRoute controllers={controllers} /> },
         { path: '/library', element: <LibraryRoute controllers={controllers} /> },
@@ -106,6 +107,22 @@ function AppRouter({ controllers }: { controllers: EagleControllers }): React.JS
   return <RouterProvider router={router} />;
 }
 
+/**
+ * Default landing: the media library when a library source exists (the
+ * Jellyfin-style modular home); live-only setups fall back to the flat
+ * channel list.
+ */
+function HomeRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const lib = useLibrary(controllers.library);
+  useEffect(() => {
+    void controllers.library.refresh();
+  }, [controllers.library]);
+  if (lib.status === 'ready' && !lib.available) return <ListRoute controllers={controllers} />;
+  // While loading (or errored) show the library screen itself — it renders
+  // its own skeleton / error states; as home its top-left action opens 直播.
+  return <LibraryRoute controllers={controllers} home />;
+}
+
 /** Channel list inside the desktop shell (app bar + centered column). */
 function ListRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
   const navigate = useNavigate();
@@ -115,16 +132,11 @@ function ListRoute({ controllers }: { controllers: EagleControllers }): React.JS
       <View style={styles.root}>
         <View style={styles.shell}>
           <View style={styles.appBar}>
-            <Text style={styles.brand}>Eagle</Text>
+            <Pressable hitSlop={8} onPress={() => navigate('/')}>
+              <Text style={styles.brand}>‹ Eagle</Text>
+            </Pressable>
             <Text style={styles.brandSub}>直播</Text>
             <View style={styles.appBarSpacer} />
-            <Text
-              style={styles.libraryLink}
-              onPress={() => navigate('/library')}
-              accessibilityRole="button"
-            >
-              媒体库 →
-            </Text>
           </View>
           <ChannelListScreen
             controller={controllers.channelList}
@@ -231,7 +243,7 @@ function PlayerRoute({ controllers }: { controllers: EagleControllers }): React.
 // Media library routes (Jellyfin-style modular home, poster walls, series).
 // ---------------------------------------------------------------------------
 
-function LibraryRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+function LibraryRoute({ controllers, home = false }: { controllers: EagleControllers; home?: boolean }): React.JSX.Element {
   const navigate = useNavigate();
   const lib = useLibrary(controllers.library);
   const progress = useWatchProgress(controllers.watchProgress);
@@ -257,7 +269,8 @@ function LibraryRoute({ controllers }: { controllers: EagleControllers }): React
       onRemoveProgress={(id) => controllers.watchProgress.remove(id)}
       onOpenLibrary={(l) => navigate(`/library/${encodeURIComponent(l.id)}`, { state: { title: l.name } })}
       onOpenSeries={(item) => navigate(`/series/${encodeURIComponent(item.channelId.replace(/^jfv:/, ''))}`, { state: { title: item.title } })}
-      onBack={() => navigate('/')}
+      onBack={() => navigate(home ? '/live' : '/')}
+      backLabel={home ? '直播 →' : undefined}
     />
   );
 }

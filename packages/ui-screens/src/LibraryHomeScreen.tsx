@@ -26,6 +26,8 @@ export interface LibraryHomeScreenProps {
   onOpenLibrary: (library: MediaLibrary) => void;
   onOpenSeries: (item: LibraryItem) => void;
   onBack: () => void;
+  /** Label for the top-left action (e.g. "直播" when the library IS home). */
+  backLabel?: string;
 }
 
 function fmtRemaining(sec: number): string {
@@ -60,7 +62,7 @@ function useMetrics() {
 }
 
 export function LibraryHomeScreen(props: LibraryHomeScreenProps) {
-  const { available, status, errorMessage, libraries, recent, continueWatching, onPlay, onRemoveProgress, onOpenLibrary, onOpenSeries, onBack } = props;
+  const { available, status, errorMessage, libraries, recent, continueWatching, onPlay, onRemoveProgress, onOpenLibrary, onOpenSeries, onBack, backLabel } = props;
   const m = useMetrics();
   const loading = status === 'loading' || status === 'idle';
 
@@ -88,7 +90,7 @@ export function LibraryHomeScreen(props: LibraryHomeScreenProps) {
     <View style={styles.root}>
       <View style={[styles.appBar, m.contentMaxW ? { maxWidth: m.contentMaxW, marginLeft: 'auto', marginRight: 'auto', width: '100%' } : null]}>
         <Pressable onPress={onBack} hitSlop={8} style={({ pressed }) => pressed && styles.cardPressed}>
-          <Text style={styles.back}>‹ 返回</Text>
+          <Text style={styles.back}>{backLabel ?? '‹ 返回'}</Text>
         </Pressable>
         <Text style={styles.brand}>Eagle 媒体库</Text>
         <View style={styles.appBarSpacer} />

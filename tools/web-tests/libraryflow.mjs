@@ -38,10 +38,13 @@ await set('__pw', 'lmh1999.');
 await page.getByText('添加', { exact: true }).click();
 await page.waitForTimeout(20000);
 
-// --- 1. library home --------------------------------------------------------
-await page.evaluate(() => history.pushState(null, '', '/library'));
-await page.getByText('媒体库 →').click();
+// --- 1. home IS the library now --------------------------------------------
 await page.waitForTimeout(6000);
+if (!(await page.evaluate(() => document.body.innerText)).includes('我的媒体')) {
+  // server flake fallback: old path
+  await page.goto('http://localhost:1420/library', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(6000);
+}
 const home = await text();
 console.log('1. 我的媒体 电视剧:', home.includes('电视剧'), '| 电影:', home.includes('电影'));
 console.log('1b. 最近添加:', home.includes('最近添加'));
