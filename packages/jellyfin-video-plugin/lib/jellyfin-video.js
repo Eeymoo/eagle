@@ -202,6 +202,9 @@ export class JellyfinVideoSource extends LiveSourceBase {
             posterUrl: tag
                 ? withParams(joinUrl(this.session.serverUrl, `Items/${item.Id}/Images/Primary`), { tag, quality: '90' })
                 : undefined,
+            backdropUrl: item.BackdropImageTags?.[0]
+                ? withParams(joinUrl(this.session.serverUrl, `Items/${item.Id}/Images/Backdrop/0`), { tag: item.BackdropImageTags[0], quality: '90' })
+                : undefined,
             year: item.ProductionYear,
             addedAt: item.DateCreated,
             kind: item.Type === 'Series' ? 'series' : item.Type === 'Episode' ? 'episode' : 'movie',

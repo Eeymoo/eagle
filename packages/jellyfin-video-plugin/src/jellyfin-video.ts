@@ -31,6 +31,7 @@ interface ItemDto {
   RunTimeTicks?: number;
   Genres?: string[];
   ImageTags?: { Primary?: string };
+  BackdropImageTags?: string[];
   /** e.g. "mov,mp4,m4a,3gp,3g2,mj2" — first entry drives stream choice. */
   Container?: string;
   DateCreated?: string;
@@ -250,6 +251,9 @@ export class JellyfinVideoSource extends LiveSourceBase implements LibrarySource
       subtitle,
       posterUrl: tag
         ? withParams(joinUrl(this.session.serverUrl, `Items/${item.Id}/Images/Primary`), { tag, quality: '90' })
+        : undefined,
+      backdropUrl: item.BackdropImageTags?.[0]
+        ? withParams(joinUrl(this.session.serverUrl, `Items/${item.Id}/Images/Backdrop/0`), { tag: item.BackdropImageTags[0], quality: '90' })
         : undefined,
       year: item.ProductionYear,
       addedAt: item.DateCreated,

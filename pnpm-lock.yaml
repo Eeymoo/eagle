@@ -331,6 +331,9 @@ importers:
       '@eagle/headless-ui':
         specifier: workspace:*
         version: link:../headless-ui
+      '@eagle/icons':
+        specifier: workspace:*
+        version: link:../icons
       hls.js:
         specifier: ^1.5.20
         version: 1.7.1

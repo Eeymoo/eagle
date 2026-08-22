@@ -222,9 +222,10 @@ body {
 /* Infuse-style seek feedback: large transient indicator over the video */
 .seek-flash {
   position: absolute; top: 50%; transform: translateY(-50%);
-  padding: 14px 26px; border-radius: 999px; z-index: 5;
+  display: flex; align-items: center; gap: 6px;
+  padding: 14px 22px; border-radius: 999px; z-index: 5;
   background: rgba(10, 13, 18, 0.6); backdrop-filter: blur(10px);
-  color: #fff; font-size: 22px; font-weight: 700; letter-spacing: 1px;
+  color: #fff;
   animation: eagle-seekflash 0.65s ease-out forwards;
   pointer-events: none;
 }

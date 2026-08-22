@@ -9,7 +9,7 @@
  * compat risk. Uses the same headless controllers as the live player.
  */
 import React, { useEffect, useRef } from 'react';
-import { Maximize, Pause, Play, Volume1, Volume2, VolumeX } from 'lucide-react';
+import { ChevronLeft, Maximize, Pause, Play, RotateCcw, RotateCw, Volume1, Volume2, VolumeX } from 'lucide-react';
 import type Hls from 'hls.js';
 import type { Channel } from '@eagle/core';
 import type { PlayerController, PlayerControlsController } from '@eagle/headless-ui';
@@ -56,8 +56,8 @@ const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
 /** Video fit modes: contain shows the WHOLE frame (letterbox, standard
  *  default); cover fills the screen and crops the edges (opt-in). */
 const FITS = [
-  { css: 'contain', icon: '⤢', label: '适应' },
-  { css: 'cover', icon: '⬛', label: '填充' },
+  { css: 'contain', label: '适应' },
+  { css: 'cover', label: '填充' },
 ] as const;
 
 export function VodPlayerScreen({ controller, controls, channel, onBack, startAtSec = 0, onProgress }: VodPlayerScreenProps) {
@@ -305,26 +305,29 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
 
       {seekFlash && (
         <div className={'seek-flash ' + (seekFlash.dir > 0 ? 'seek-flash-r' : 'seek-flash-l')}>
-          {seekFlash.dir > 0 ? '10s »' : '« 10s'}
+          {seekFlash.dir > 0
+            ? <RotateCw size={26} color="#fff" strokeWidth={2} />
+            : <RotateCcw size={26} color="#fff" strokeWidth={2} />}
+          <span style={{ fontSize: 15, fontWeight: 700 }}>10s</span>
         </div>
       )}
       {ui.visible && state.status !== 'error' && (
         <>
           <div className="player-bar">
-            <button className="player-back" onClick={onBack}>‹ 返回</button>
+            <button className="player-back" onClick={onBack} title="返回" aria-label="返回"><ChevronLeft size={20} color="#fff" /></button>
             <span className="player-title">{channel.name}</span>
             <button
               className="vod-tool"
               onClick={() => setFitIdx((i) => (i + 1) % FITS.length)}
               title={fitIdx === 0 ? '画面适应（完整显示）' : '填充屏幕（裁切边缘）'}
-            ><span style={{ fontSize: 14 }}>{FITS[fitIdx].icon}</span></button>
+            ><span style={{ fontSize: 12, fontWeight: 700 }}>{FITS[fitIdx].label}</span></button>
             <button className="vod-tool" onClick={toggleFullscreen} title="全屏"><Maximize size={15} color="#dfe4ec" /></button>
           </div>
           <div className="vod-bar">
             <button className="vod-ctl" onClick={() => controls.togglePlayPause()} title={ui.paused ? '播放' : '暂停'}>
               {ui.paused ? <Play size={17} color="#fff" /> : <Pause size={17} color="#fff" />}
             </button>
-            <button className="vod-skip" onClick={() => skip(-10)} title="后退 10 秒">« 10s</button>
+            <button className="vod-skip" onClick={() => skip(-10)} title="后退 10 秒"><RotateCcw size={15} color="#dfe4ec" /><span>10s</span></button>
             <span className="vod-time">{fmt(progress.t)}</span>
             <div className="vod-seekwrap">
               {/* buffered range behind the draggable thumb */}
@@ -344,7 +347,7 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
               />
             </div>
             <span className="vod-time">{fmt(progress.dur)}</span>
-            <button className="vod-skip" onClick={() => skip(10)} title="快进 10 秒">10s »</button>
+            <button className="vod-skip" onClick={() => skip(10)} title="快进 10 秒"><RotateCw size={15} color="#dfe4ec" /><span>10s</span></button>
             <button className="vod-tool vod-speed" onClick={cycleSpeed} title="播放速度">
               {SPEEDS[speedIdx]}×
             </button>

@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@eagle/icons": "workspace:*",
     "@eagle/core": "workspace:*",
     "@eagle/design-tokens": "workspace:*",
     "@eagle/headless-ui": "workspace:*",

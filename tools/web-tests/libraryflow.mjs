@@ -107,10 +107,10 @@ console.log('2. 电影墙有年份条目:', wallHasItems, '| url:', page.url().s
     const t = Array.from(document.querySelectorAll('div,span')).filter((e) => e.childElementCount === 0 && /19\d\d|20\d\d/.test(e.textContent ?? '')).map((e) => e.textContent);
     return t.length;
   });
-  await page.getByText('☰ 列表').first().click();
+  await page.locator('[aria-label="切换视图"]').first().click();
   await page.waitForTimeout(600);
   const listOk = await page.evaluate(() => document.querySelectorAll('img').length < 10 && (document.body.innerText.match(/\n/g) || []).length > 20);
-  await page.getByText('▦ 海报').first().click();
+  await page.locator('[aria-label="切换视图"]').first().click();
   await page.waitForTimeout(400);
   // reset sort to recently-added so step 4 picks a known-playable movie
   // (name-sorted first title happened to be codec-incompatible in chromium).

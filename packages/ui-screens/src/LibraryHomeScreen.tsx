@@ -89,11 +89,7 @@ export function LibraryHomeScreen(props: LibraryHomeScreenProps) {
   return (
     <View style={styles.root}>
       <View style={[styles.appBar, m.contentMaxW ? { maxWidth: m.contentMaxW, marginLeft: 'auto', marginRight: 'auto', width: '100%' } : null]}>
-        <Pressable onPress={onBack} hitSlop={8} style={({ pressed }) => pressed && styles.cardPressed}>
-          <Text style={styles.back}>{backLabel ?? '‹ 返回'}</Text>
-        </Pressable>
         <Text style={styles.brand}>Eagle 媒体库</Text>
-        <View style={styles.appBarSpacer} />
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.body, m.contentMaxW ? { maxWidth: m.contentMaxW, marginLeft: 'auto', marginRight: 'auto', width: '100%' } : null]}>

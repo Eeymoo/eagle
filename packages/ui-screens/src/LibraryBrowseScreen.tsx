@@ -10,6 +10,7 @@
  */
 import React from 'react';
 import { FlatList, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { LayoutGrid, List } from '@eagle/icons';
 import type { LibraryItem } from '@eagle/core';
 
 export interface LibraryBrowseScreenProps {
@@ -69,9 +70,6 @@ export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPla
   return (
     <View style={[styles.root, desktop && styles.wideRoot]}>
       <View style={[styles.appBar, desktop && styles.wideInner]}>
-        <Pressable onPress={onBack} hitSlop={8} style={({ pressed }) => pressed && styles.cardPressed}>
-          <Text style={styles.back}>‹ 返回</Text>
-        </Pressable>
         <Text style={styles.brand} numberOfLines={1}>{title}</Text>
         <Text style={styles.count}>{filtered.length > 0 ? `${filtered.length} 项` : ''}</Text>
       </View>
@@ -99,7 +97,7 @@ export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPla
             <Text style={styles.sortChipText}>{desc ? '↓' : '↑'}</Text>
           </Pressable>
           <Pressable onPress={() => setListView((v) => !v)} style={({ pressed }) => [styles.sortChip, pressed && styles.cardPressed]} accessibilityLabel="切换视图">
-            <Text style={styles.sortChipText}>{listView ? '▦ 海报' : '☰ 列表'}</Text>
+            {listView ? <LayoutGrid size={13} color="#aeb6c2" strokeWidth={1.8} /> : <List size={13} color="#aeb6c2" strokeWidth={1.8} />}
           </Pressable>
         </View>
       </View>
@@ -258,9 +256,6 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
         )}
         <View style={styles.heroScrim} />
         <View style={[styles.heroBar, { width: contentW, ...(desktop ? { marginLeft: railInset } : null) }]}>
-          <Pressable onPress={onBack} hitSlop={8} style={({ pressed }) => pressed && styles.cardPressed}>
-            <Text style={styles.back}>‹ 返回</Text>
-          </Pressable>
         </View>
         <View style={[styles.heroTitleWrap, { width: contentW, ...(desktop ? { marginLeft: railInset } : null) }]}>
           <Text style={styles.heroTitle} numberOfLines={2}>{title}</Text>

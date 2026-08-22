@@ -5,6 +5,7 @@
  */
 import React, { useEffect, useMemo } from 'react';
 import { FlatList, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Settings } from '@eagle/icons';
 import type { Channel } from '@eagle/core';
 import type { ChannelListController, HealthController } from '@eagle/headless-ui';
 import { useChannelList, useHealth } from '@eagle/headless-ui';
@@ -55,8 +56,8 @@ export function ChannelListScreen({ controller, health, onPlay, onOpenSettings }
             onChangeText={(q) => controller.setQuery(q)}
           />
         </View>
-        <Pressable onPress={onOpenSettings} style={styles.gear}>
-          <Text style={styles.gearText}>⚙︎</Text>
+        <Pressable onPress={onOpenSettings} style={styles.gear} hitSlop={8} accessibilityLabel="设置">
+          <Settings size={18} color="#8b93a1" strokeWidth={1.8} />
         </Pressable>
       </View>
 

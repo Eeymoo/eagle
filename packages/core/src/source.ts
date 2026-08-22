@@ -114,6 +114,8 @@ export interface LibraryItem {
   runtimeMin?: number;
   /** Genres. */
   genres?: string[];
+  /** Wide (16:9) backdrop artwork for detail heroes. */
+  backdropUrl?: string;
 }
 
 /** Optional capability for media-library sources. */

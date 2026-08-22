@@ -9,7 +9,7 @@
  * (live TV).
  */
 import React, { useEffect, useRef } from 'react';
-import { Pause, Play } from 'lucide-react';
+import { ChevronLeft, Pause, Play } from 'lucide-react';
 import type Hls from 'hls.js';
 import type { Channel } from '@eagle/core';
 import type { PlayerController, PlayerControlsController } from '@eagle/headless-ui';
@@ -191,8 +191,8 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
       {ui.visible && state.status !== 'error' && (
         <>
           <div className="player-bar">
-            <button className="player-back" onClick={onBack}>
-              ‹ 返回
+            <button className="player-back" onClick={onBack} title="返回" aria-label="返回">
+              <ChevronLeft size={20} color="#fff" />
             </button>
             <span className="player-title">{channel.name}</span>
             {playing && !isVod && <span className="live">LIVE</span>}
