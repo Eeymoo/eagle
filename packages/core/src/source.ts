@@ -106,6 +106,14 @@ export interface LibraryItem {
   kind: 'movie' | 'series' | 'episode';
   /** For episodes: the series item id (drill into series detail). */
   seriesId?: string;
+  /** Synopsis / overview text (Infuse-style detail pages). */
+  overview?: string;
+  /** Community rating, 0-10 (e.g. 7.8). */
+  rating?: number;
+  /** Runtime in minutes. */
+  runtimeMin?: number;
+  /** Genres. */
+  genres?: string[];
 }
 
 /** Optional capability for media-library sources. */

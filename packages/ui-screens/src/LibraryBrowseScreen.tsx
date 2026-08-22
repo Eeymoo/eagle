@@ -9,7 +9,7 @@
  * each layout.
  */
 import React from 'react';
-import { FlatList, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { FlatList, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { LibraryItem } from '@eagle/core';
 
 export interface LibraryBrowseScreenProps {
@@ -19,6 +19,8 @@ export interface LibraryBrowseScreenProps {
   items: LibraryItem[];
   onPlay: (channelId: string, resumeAtSec: number) => void;
   onOpenSeries: (item: LibraryItem) => void;
+  /** Infuse logic: movies open a DETAIL page (not direct play). */
+  onOpenDetail: (item: LibraryItem) => void;
   onBack: () => void;
 }
 
@@ -26,8 +28,18 @@ const PAGE = 40;
 const GAP = 12;
 const PAD = 16;
 
-/** Poster wall with incremental paging (big libraries stay smooth). */
-export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPlay, onOpenSeries, onBack }: LibraryBrowseScreenProps) {
+/** Sort keys for the Infuse-style browse toolbar. */
+type SortKey = 'added' | 'title' | 'year';
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: 'added', label: '添加时间' },
+  { key: 'title', label: '名称' },
+  { key: 'year', label: '年份' },
+];
+
+/** Poster wall with incremental paging + Infuse browse controls:
+ *  sort bar, ascending/descending toggle, poster/list view, search. */
+export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPlay, onOpenSeries, onOpenDetail, onBack }: LibraryBrowseScreenProps) {
   const { width } = useWindowDimensions();
   const desktop = width >= 768;
   const cardW = desktop ? 158 : 124;
@@ -35,7 +47,24 @@ export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPla
   const cols = Math.max(2, Math.min(desktop ? 7 : 3, Math.floor((width - 2 * PAD) / (cardW + GAP))));
   const [shownCount, setShownCount] = React.useState(PAGE);
   React.useEffect(() => setShownCount(PAGE), [cols]);
-  const shown = items.slice(0, shownCount);
+  // Infuse browse state: sort + direction + view mode + query.
+  const [sortKey, setSortKey] = React.useState<SortKey>('added');
+  const [desc, setDesc] = React.useState(true);
+  const [listView, setListView] = React.useState(false);
+  const [query, setQuery] = React.useState('');
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const base = q ? items.filter((i) => i.title.toLowerCase().includes(q)) : items;
+    const dir = desc ? -1 : 1;
+    const sorted = [...base].sort((a, b) => {
+      if (sortKey === 'title') return dir * a.title.localeCompare(b.title, 'zh');
+      if (sortKey === 'year') return dir * ((a.year ?? 0) - (b.year ?? 0));
+      return dir * ((a.addedAt ?? '').localeCompare(b.addedAt ?? ''));
+    });
+    return sorted;
+  }, [items, query, sortKey, desc]);
+  const shown = filtered.slice(0, shownCount);
 
   return (
     <View style={[styles.root, desktop && styles.wideRoot]}>
@@ -44,11 +73,40 @@ export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPla
           <Text style={styles.back}>‹ 返回</Text>
         </Pressable>
         <Text style={styles.brand} numberOfLines={1}>{title}</Text>
-        <Text style={styles.count}>{items.length > 0 ? `${items.length} 项` : ''}</Text>
+        <Text style={styles.count}>{filtered.length > 0 ? `${filtered.length} 项` : ''}</Text>
       </View>
 
+      {/* Infuse browse toolbar: search, sort chips, direction, view */}
+      <View style={[styles.toolbar, desktop && styles.wideInner]}>
+        <TextInput
+          style={styles.search}
+          placeholder="搜索…"
+          placeholderTextColor="#5b6472"
+          value={query}
+          onChangeText={setQuery}
+        />
+        <View style={styles.sortRow}>
+          {SORTS.map((s) => (
+            <Pressable
+              key={s.key}
+              onPress={() => { setSortKey(s.key); setShownCount(PAGE); }}
+              style={({ pressed }) => [styles.sortChip, sortKey === s.key && styles.sortChipActive, pressed && styles.cardPressed]}
+            >
+              <Text style={[styles.sortChipText, sortKey === s.key && styles.sortChipTextActive]}>{s.label}</Text>
+            </Pressable>
+          ))}
+          <Pressable onPress={() => setDesc((d) => !d)} style={({ pressed }) => [styles.sortChip, pressed && styles.cardPressed]} accessibilityLabel="切换排序方向">
+            <Text style={styles.sortChipText}>{desc ? '↓' : '↑'}</Text>
+          </Pressable>
+          <Pressable onPress={() => setListView((v) => !v)} style={({ pressed }) => [styles.sortChip, pressed && styles.cardPressed]} accessibilityLabel="切换视图">
+            <Text style={styles.sortChipText}>{listView ? '▦ 海报' : '☰ 列表'}</Text>
+          </Pressable>
+        </View>
+      </View>
+
+
       {errorMessage ? <Text style={styles.hint}>加载失败：{errorMessage}</Text> : null}
-      {!errorMessage && !loading && items.length === 0 && <Text style={styles.hint}>这个库是空的。</Text>}
+      {!errorMessage && !loading && filtered.length === 0 && <Text style={styles.hint}>{query ? '没有匹配的条目。' : '这个库是空的。'}</Text>}
 
       {loading && items.length === 0 ? (
         <View style={[styles.wall, { gap: GAP }]}>
@@ -59,6 +117,28 @@ export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPla
             </View>
           ))}
         </View>
+      ) : listView ? (
+        /* Infuse list view: compact rows — small thumb, title, meta. */
+        <FlatList
+          data={shown}
+          keyExtractor={(i) => i.channelId}
+          key="list"
+          style={desktop ? styles.wideInner : undefined}
+          contentContainerStyle={{ paddingHorizontal: PAD }}
+          onEndReachedThreshold={0.5}
+          onEndReached={() => setShownCount((c) => Math.min(c + PAGE, filtered.length))}
+          renderItem={({ item }) => (
+            <Pressable
+              style={({ pressed }) => [styles.listRow, pressed && styles.cardPressed]}
+              onPress={() => (item.kind === 'series' ? onOpenSeries(item) : onOpenDetail(item))}
+            >
+              <Text style={styles.listTitle} numberOfLines={1}>{item.title}</Text>
+              <Text style={styles.listMeta} numberOfLines={1}>
+                {item.subtitle ?? ''}{item.year ? `${item.subtitle ? '   ·   ' : ''}${item.year}` : ''}
+              </Text>
+            </Pressable>
+          )}
+        />
       ) : (
         <FlatList
           data={shown}
@@ -74,11 +154,11 @@ export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPla
           style={desktop ? styles.wideInner : undefined}
           contentContainerStyle={{ paddingHorizontal: PAD }}
           onEndReachedThreshold={0.5}
-          onEndReached={() => setShownCount((c) => Math.min(c + PAGE, items.length))}
+                  onEndReached={() => setShownCount((c) => Math.min(c + PAGE, filtered.length))}
           renderItem={({ item }) => (
             <Pressable
               style={({ pressed }) => [styles.card, { width: cardW }, pressed && styles.cardPressed]}
-              onPress={() => (item.kind === 'series' ? onOpenSeries(item) : onPlay(item.channelId, 0))}
+              onPress={() => (item.kind === 'series' ? onOpenSeries(item) : onOpenDetail(item))}
             >
               {item.posterUrl ? (
                 <Image source={{ uri: item.posterUrl }} style={{ width: cardW, height: cardH, borderRadius: 10 }} resizeMode="cover" />
@@ -150,6 +230,22 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
   const thumbH = desktop ? 124 : 86;
   const heroBackdrop = episodes.find((e) => e.posterUrl)?.posterUrl;
 
+  // Infuse seasons: derive from SxxEyy subtitles; pill selector filters.
+  const seasons = React.useMemo(() => {
+    const set = new Set<number>();
+    for (const e of episodes) {
+      const m = /S(\d+)E\d+/.exec(e.subtitle ?? '');
+      if (m) set.add(Number(m[1]));
+    }
+    return [...set].sort((a, b) => a - b);
+  }, [episodes]);
+  const [season, setSeason] = React.useState<number | null>(null);
+  const activeSeason = season ?? seasons[0] ?? null;
+  const visibleEps = React.useMemo(
+    () => (activeSeason == null ? episodes : episodes.filter((e) => /S(\d+)E\d+/.exec(e.subtitle ?? '')?.[1] === String(activeSeason))),
+    [episodes, activeSeason],
+  );
+
   return (
     <View style={styles.root}>
       {/* Hero: series artwork as a backdrop with scrim + title, capped to the
@@ -172,6 +268,23 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
         </View>
       </View>
 
+      {/* Season pills (Infuse series detail) */}
+      {seasons.length > 1 && (
+        <View style={[styles.seasonRow, { maxWidth: contentW, width: '100%' }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+            {seasons.map((sn) => (
+              <Pressable
+                key={sn}
+                onPress={() => setSeason(sn)}
+                style={({ pressed }) => [styles.sortChip, sn === activeSeason && styles.sortChipActive, pressed && styles.cardPressed]}
+              >
+                <Text style={[styles.sortChipText, sn === activeSeason && styles.sortChipTextActive]}>第 {sn} 季</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {errorMessage ? <Text style={styles.hint}>加载失败：{errorMessage}</Text> : null}
 
       {loading && episodes.length === 0 ? (
@@ -190,7 +303,7 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
       ) : (
         <ScrollView>
         <View style={[styles.epList, { maxWidth: contentW, width: '100%' }]}>
-          {episodes.map((ep) => {
+          {visibleEps.map((ep) => {
             const resume = resumeAt[ep.channelId] ?? 0;
             return (
               <Pressable
@@ -222,6 +335,28 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0e1116' },
+  // Infuse browse toolbar
+  toolbar: { paddingHorizontal: PAD, paddingTop: 4, paddingBottom: 10, gap: 8 },
+  search: {
+    color: '#fff', backgroundColor: '#141922', borderWidth: 1, borderColor: '#1d232d',
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: Platform.select({ web: 7, default: 9 }),
+    fontSize: 14, maxWidth: 360,
+  },
+  sortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  sortChip: {
+    paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999,
+    backgroundColor: '#141922', borderWidth: 1, borderColor: '#1d232d',
+  },
+  sortChipActive: { backgroundColor: 'rgba(91,137,255,0.20)', borderColor: '#5b89ff' },
+  sortChipText: { color: '#aeb6c2', fontSize: 12 },
+  sortChipTextActive: { color: '#fff' },
+  // List view rows
+  listRow: {
+    paddingHorizontal: 14, paddingVertical: 12, borderRadius: 10, gap: 3,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#1d232d',
+  },
+  listTitle: { color: '#e6e9ef', fontSize: 15 },
+  listMeta: { color: '#8b93a1', fontSize: 12 },
   // Desktop: cap content at 1280 centered (matches the library home).
   wideRoot: { alignItems: 'center' },
   wideInner: { width: '100%', maxWidth: 1280 },
@@ -250,6 +385,7 @@ const styles = StyleSheet.create({
   heroTitle: { color: '#fff', fontSize: 26, fontWeight: '700' },
   heroSub: { color: '#aeb6c2', fontSize: 13, marginTop: 4 },
   // Episode list: full content-width rows (Jellyfin detail layout)
+  seasonRow: { marginTop: 14 },
   epList: { padding: 16, gap: 18 },
   epRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
   // Text block follows the cover's width (flex-bounded, not full-stretch).

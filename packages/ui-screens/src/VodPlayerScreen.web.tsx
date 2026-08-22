@@ -9,6 +9,7 @@
  * compat risk. Uses the same headless controllers as the live player.
  */
 import React, { useEffect, useRef } from 'react';
+import { Maximize, Pause, Play, Volume1, Volume2, VolumeX } from 'lucide-react';
 import type Hls from 'hls.js';
 import type { Channel } from '@eagle/core';
 import type { PlayerController, PlayerControlsController } from '@eagle/headless-ui';
@@ -142,12 +143,19 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
     if (!ui.paused && video.paused) video.play().catch(() => undefined);
   }, [ui.paused, url]);
 
+  // Seek feedback flash (Infuse-style ‹10s / 10s› indicator on the video).
+  const [seekFlash, setSeekFlash] = React.useState<{ dir: 1 | -1; k: number } | null>(null);
+  const flashTimer = useRef<number | null>(null);
   const skip = (delta: number): void => {
     const video = videoRef.current;
     if (!video) return;
     const dur = video.duration || 0;
     video.currentTime = Math.min(Math.max(video.currentTime + delta, 0), dur || Infinity);
+    setSeekFlash({ dir: delta > 0 ? 1 : -1, k: Date.now() });
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setSeekFlash(null), 650);
   };
+  useEffect(() => () => { if (flashTimer.current !== null) window.clearTimeout(flashTimer.current); }, []);
 
   const cycleSpeed = (): void => {
     const next = (speedIdx + 1) % SPEEDS.length;
@@ -179,6 +187,40 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
     if (document.fullscreenElement) void document.exitFullscreen();
     else void root.requestFullscreen().catch(() => undefined);
   };
+
+  // 键盘快捷键（Infuse 通例）：空格=播放/暂停，←/→=∓10s，↑/↓=音量，
+  // F=全屏，M=静音。绑在 window，卸载时清理。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      switch (e.key) {
+        case ' ': case 'k': case 'K':
+          e.preventDefault(); controls.togglePlayPause(); break;
+        case 'ArrowLeft': skip(-10); break;
+        case 'ArrowRight': skip(10); break;
+        case 'ArrowUp':
+          e.preventDefault(); applyVolume(Math.min(1, volume + 0.1)); break;
+        case 'ArrowDown':
+          e.preventDefault(); applyVolume(Math.max(0, volume - 0.1)); break;
+        case 'f': case 'F': toggleFullscreen(); break;
+        case 'm': case 'M': toggleMute(); break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  // 鼠标移动唤出控制条（播放中自动隐藏由控制器负责）。
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const onMove = (): void => {
+      if (!ui.paused) controls.show();
+    };
+    root.addEventListener('mousemove', onMove);
+    return () => root.removeEventListener('mousemove', onMove);
+  }, [ui.paused, controls]);
 
   // 双击画面左右 1/3：∓10 秒；双击中央：播放/暂停。
   const lastTap = useRef<{ t: number; x: number }>({ t: 0, x: 0 });
@@ -261,6 +303,11 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
         />
       )}
 
+      {seekFlash && (
+        <div className={'seek-flash ' + (seekFlash.dir > 0 ? 'seek-flash-r' : 'seek-flash-l')}>
+          {seekFlash.dir > 0 ? '10s »' : '« 10s'}
+        </div>
+      )}
       {ui.visible && state.status !== 'error' && (
         <>
           <div className="player-bar">
@@ -270,12 +317,12 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
               className="vod-tool"
               onClick={() => setFitIdx((i) => (i + 1) % FITS.length)}
               title={fitIdx === 0 ? '画面适应（完整显示）' : '填充屏幕（裁切边缘）'}
-            >{FITS[fitIdx].icon}</button>
-            <button className="vod-tool" onClick={toggleFullscreen} title="全屏">⛶</button>
+            ><span style={{ fontSize: 14 }}>{FITS[fitIdx].icon}</span></button>
+            <button className="vod-tool" onClick={toggleFullscreen} title="全屏"><Maximize size={15} color="#dfe4ec" /></button>
           </div>
           <div className="vod-bar">
             <button className="vod-ctl" onClick={() => controls.togglePlayPause()} title={ui.paused ? '播放' : '暂停'}>
-              {ui.paused ? '▶' : '❚❚'}
+              {ui.paused ? <Play size={17} color="#fff" /> : <Pause size={17} color="#fff" />}
             </button>
             <button className="vod-skip" onClick={() => skip(-10)} title="后退 10 秒">« 10s</button>
             <span className="vod-time">{fmt(progress.t)}</span>
@@ -301,7 +348,7 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
             <button className="vod-tool vod-speed" onClick={cycleSpeed} title="播放速度">
               {SPEEDS[speedIdx]}×
             </button>
-            <button className="vod-tool" onClick={toggleMute} title="静音">{muted || volume === 0 ? '🔇' : '🔊'}</button>
+            <button className="vod-tool" onClick={toggleMute} title="静音">{muted || volume === 0 ? <VolumeX size={15} color="#dfe4ec" /> : volume < 0.5 ? <Volume1 size={15} color="#dfe4ec" /> : <Volume2 size={15} color="#dfe4ec" />}</button>
             <input
               type="range"
               className="vod-vol"

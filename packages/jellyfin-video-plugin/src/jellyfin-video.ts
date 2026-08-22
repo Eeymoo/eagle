@@ -26,6 +26,10 @@ interface ItemDto {
   ProductionYear?: number;
   ParentIndexNumber?: number; // season
   IndexNumber?: number; // episode
+  Overview?: string;
+  CommunityRating?: number;
+  RunTimeTicks?: number;
+  Genres?: string[];
   ImageTags?: { Primary?: string };
   /** e.g. "mov,mp4,m4a,3gp,3g2,mj2" — first entry drives stream choice. */
   Container?: string;
@@ -251,6 +255,10 @@ export class JellyfinVideoSource extends LiveSourceBase implements LibrarySource
       addedAt: item.DateCreated,
       kind: item.Type === 'Series' ? 'series' : item.Type === 'Episode' ? 'episode' : 'movie',
       seriesId: item.SeriesId,
+      overview: item.Overview,
+      rating: item.CommunityRating,
+      runtimeMin: item.RunTimeTicks ? Math.round(item.RunTimeTicks / 600_000_000) : undefined,
+      genres: item.Genres,
     };
   }
 

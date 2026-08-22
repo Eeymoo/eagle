@@ -31,8 +31,8 @@ import { createEagleControllers } from '@eagle/headless-ui';
 import type { EagleControllers } from '@eagle/headless-ui';
 import { useChannelList, useLibrary, useWatchProgress } from '@eagle/headless-ui';
 import {
-  ChannelListScreen, LibraryBrowseScreen, LibraryHomeScreen, PlayerScreen,
-  SeriesScreen, SettingsScreen, ToastProvider, VodPlayerScreen,
+  ChannelListScreen, DetailScreen, LibraryBrowseScreen, LibraryHomeScreen,
+  PlayerScreen, SeriesScreen, SettingsScreen, ToastProvider, VodPlayerScreen,
 } from '@eagle/ui-screens';
 import { AppShellLayout, AppShellNav } from '@eagle/ui-nav';
 import { Library, Settings, Tv } from '@eagle/icons';
@@ -110,6 +110,7 @@ function AppRouter({ controllers }: { controllers: EagleControllers }): React.JS
             { path: 'library', element: <LibraryRoute controllers={controllers} /> },
             { path: 'library/:viewId', element: <LibraryBrowseRoute controllers={controllers} /> },
             { path: 'series/:seriesId', element: <SeriesRoute controllers={controllers} /> },
+            { path: 'detail/:channelId', element: <DetailRoute controllers={controllers} /> },
             // Player lives INSIDE the shell: the nav stays visible during
             // playback and disappears only in (element-level) fullscreen,
             // which the browser hides by design.
@@ -445,7 +446,35 @@ function LibraryBrowseRoute({ controllers }: { controllers: EagleControllers }):
       items={items}
       onPlay={play}
       onOpenSeries={(item) => navigate(`/series/${encodeURIComponent(item.channelId.replace(/^jfv:/, ''))}`, { state: { title: item.title } })}
+      onOpenDetail={(item) => navigate(`/detail/${encodeURIComponent(item.channelId)}`, { state: { item } })}
       onBack={() => navigate('/library')}
+    />
+  );
+}
+
+/**
+ * Infuse-style item detail: the movie's hero, metadata row, Play / 续播
+ * actions and synopsis. The item travels via router state from the wall.
+ */
+function DetailRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { channelId = '' } = useParams();
+  const item = (location.state as { item?: LibraryItem } | null)?.item;
+  const progress = useWatchProgress(controllers.watchProgress);
+  const id = decodeURIComponent(channelId);
+  const resumeAt = (item ? progress.entries[item.channelId]?.positionSec : undefined) ?? 0;
+
+  if (!item) return <Navigate to="/library" replace />;
+  return (
+    <DetailScreen
+      item={item}
+      resumeAt={resumeAt}
+      onPlay={(startAtSec) => {
+        const t = startAtSec > 0 ? `?t=${Math.floor(startAtSec)}` : '';
+        navigate(`/player/${encodeURIComponent(id)}${t}`);
+      }}
+      onBack={() => navigate(-1)}
     />
   );
 }

@@ -88,22 +88,68 @@ const wall = await text();
 const wallHasItems = /19\d\d|20\d\d/.test(wall);
 console.log('2. 电影墙有年份条目:', wallHasItems, '| url:', page.url().slice(-20));
 
+// --- 3f. Infuse toolbar: search, sort, view toggle --------------------------
+{
+  const setQ = async (q) => page.evaluate((val) => {
+    const i = document.querySelector('input[placeholder="搜索…"]');
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    set.call(i, val);
+    i.dispatchEvent(new Event('input', { bubbles: true }));
+  }, q);
+  await setQ('zzzz-none');
+  await page.waitForTimeout(500);
+  const empty = await page.evaluate(() => document.body.innerText.includes('没有匹配的条目'));
+  await setQ('');
+  await page.waitForTimeout(400);
+  await page.getByText('名称', { exact: true }).first().click();
+  await page.waitForTimeout(400);
+  const sorted = await page.evaluate(() => {
+    const t = Array.from(document.querySelectorAll('div,span')).filter((e) => e.childElementCount === 0 && /19\d\d|20\d\d/.test(e.textContent ?? '')).map((e) => e.textContent);
+    return t.length;
+  });
+  await page.getByText('☰ 列表').first().click();
+  await page.waitForTimeout(600);
+  const listOk = await page.evaluate(() => document.querySelectorAll('img').length < 10 && (document.body.innerText.match(/\n/g) || []).length > 20);
+  await page.getByText('▦ 海报').first().click();
+  await page.waitForTimeout(400);
+  // reset sort to recently-added so step 4 picks a known-playable movie
+  // (name-sorted first title happened to be codec-incompatible in chromium).
+  await page.getByText('添加时间', { exact: true }).first().click();
+  await page.waitForTimeout(400);
+  console.log('3f. toolbar — emptySearch:', empty, '| sortedMetaCount>0:', sorted > 0, '| listView:', listOk);
+}
+
 // --- 4. play a movie from the wall -----------------------------------------
 const movieCard = page.locator('img').first();
 const n = await page.locator('img').count();
 console.log('3b. img count:', n);
 await movieCard.click({ timeout: 8000 }).catch((e) => console.log('3c. click err:', e.message.split('\n')[0]));
+await page.waitForTimeout(1200);
+console.log('3d. url after click (want /detail/):', page.url().slice(-30));
+const detailOk = await page.evaluate(() => {
+  const t = document.body.innerText;
+  return { synopsis: t.includes('简介'), playBtn: t.includes('播放') || t.includes('继续播放') };
+});
+console.log('3d2. detail page renders:', JSON.stringify(detailOk));
+// click the play action to start playback (Infuse flow)
+await page.evaluate(() => {
+  const el = Array.from(document.querySelectorAll('div,span')).find((e) => e.childElementCount === 0 && /^(_ continuous|播放|继续播放)$/.test((e.textContent ?? '').trim()) === false && false);
+  void el;
+});
+await page.getByText(/^(播放|继续播放)$/).first().click().catch(async (e) => {
+  console.log('3d3. play click fallback:', e.message.split('\n')[0]);
+});
 await page.waitForTimeout(800);
-console.log('3d. url after click:', page.url().slice(-30));
-if (!page.url().includes('/player/')) {
-  await page.waitForTimeout(9000);
-  console.log('3e. after wait url:', page.url().slice(-30), '| body:', JSON.stringify((await text()).slice(0, 50)));
-}
+console.log('3e. url after play:', page.url().slice(-30));
 // wait for player mount (list load + stream resolve vary with server mood)
 let mounted = false;
-for (let i = 0; i < 24 && !mounted; i++) {
+for (let i = 0; i < 40 && !mounted; i++) {
   await page.waitForTimeout(1500);
-  mounted = (await page.locator('.player-root, video').count()) > 0;
+  mounted = (await page.locator('video').count()) > 0;
+  if (i === 39) {
+    const st = await page.evaluate(() => ({ spinner: document.querySelectorAll('.spinner').length, root: document.querySelectorAll('.player-root').length, body: document.body.innerText.slice(0, 60) }));
+    console.log('4x. player timeout internals:', JSON.stringify(st));
+  }
 }
 console.log('4. player mounted from wall click:', mounted, '| url has t:', /player\//.test(page.url()));
 // 4a2. default fit = contain (whole frame visible, letterboxed)
@@ -112,7 +158,10 @@ const fit = await page.evaluate(() => {
   return v ? getComputedStyle(v).objectFit : null;
 });
 console.log('4a2. default object-fit (want contain):', fit);
-// 4a3. toggle to cover via the fit button
+// 4a3. toggle to cover via the fit button (reveal controls first —
+// they auto-hide while playing)
+await page.mouse.move(700, 450);
+await page.waitForTimeout(400);
 const toggled = await page.evaluate(() => {
   const btn = Array.from(document.querySelectorAll('button')).find((b) => (b.title ?? '').includes('画面适应') || (b.title ?? '').includes('填充'));
   if (!btn) return false;

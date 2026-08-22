@@ -206,6 +206,10 @@ export class JellyfinVideoSource extends LiveSourceBase {
             addedAt: item.DateCreated,
             kind: item.Type === 'Series' ? 'series' : item.Type === 'Episode' ? 'episode' : 'movie',
             seriesId: item.SeriesId,
+            overview: item.Overview,
+            rating: item.CommunityRating,
+            runtimeMin: item.RunTimeTicks ? Math.round(item.RunTimeTicks / 600_000_000) : undefined,
+            genres: item.Genres,
         };
     }
     async resolveStream(channelId) {

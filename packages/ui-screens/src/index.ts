@@ -28,3 +28,5 @@ export { LibraryHomeScreen } from './LibraryHomeScreen.js';
 export type { LibraryHomeScreenProps } from './LibraryHomeScreen.js';
 export { LibraryBrowseScreen, SeriesScreen } from './LibraryBrowseScreen.js';
 export type { LibraryBrowseScreenProps, SeriesScreenProps } from './LibraryBrowseScreen.js';
+export { DetailScreen } from './DetailScreen.js';
+export type { DetailScreenProps } from './DetailScreen.js';

@@ -9,6 +9,7 @@
  * (live TV).
  */
 import React, { useEffect, useRef } from 'react';
+import { Pause, Play } from 'lucide-react';
 import type Hls from 'hls.js';
 import type { Channel } from '@eagle/core';
 import type { PlayerController, PlayerControlsController } from '@eagle/headless-ui';
@@ -202,7 +203,7 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
             >{cover ? '⬛' : '⤢'}</button>
           </div>
           <button className="center-btn" onClick={() => controls.togglePlayPause()}>
-            {ui.paused ? '▶' : '❚❚'}
+            {ui.paused ? <Play size={26} color='#fff' /> : <Pause size={26} color='#fff' />}
           </button>
           {isVod && (
             <div className="vod-bar">
