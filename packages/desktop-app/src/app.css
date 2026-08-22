@@ -15,7 +15,9 @@ body {
 
 /* ---- web player (PlayerScreen.web.tsx classnames) ---- */
 .player-root { flex: 1; position: relative; background: #000; border: none; padding: 0; width: 100%; cursor: default; }
-.player-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.player-video { width: 100%; height: 100%; object-fit: cover; background: #000; }
+/* Temp default: video FILLS the screen (cover). Restore contain when a
+   fit toggle ships. */
 .player-bar {
   position: absolute;
   top: 0;

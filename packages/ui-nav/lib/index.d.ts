@@ -31,8 +31,8 @@ export interface AppShellNavProps {
     items: NavItem[];
     activeId: string;
 }
-/** Desktop rail width — text insets across screens use this. */
-export declare const NAV_WIDTH = 92;
+/** Desktop dock width incl. its edge offset — text insets use this. */
+export declare const NAV_WIDTH = 88;
 /** Bottom bar (mobile) / floating left rail (desktop) shell navigation. */
 export declare function AppShellNav({ items, activeId }: AppShellNavProps): React.JSX.Element;
 /**

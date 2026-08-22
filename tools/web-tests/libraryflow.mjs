@@ -101,7 +101,7 @@ if (!page.url().includes('/player/')) {
 }
 // wait for player mount (list load + stream resolve vary with server mood)
 let mounted = false;
-for (let i = 0; i < 10 && !mounted; i++) {
+for (let i = 0; i < 24 && !mounted; i++) {
   await page.waitForTimeout(1500);
   mounted = (await page.locator('.player-root, video').count()) > 0;
 }
@@ -116,7 +116,7 @@ const pbox = await page.evaluate(() => {
 console.log('4b. player box:', JSON.stringify(pbox), '| rail still up:', await page.evaluate(() => {
   const el = Array.from(document.querySelectorAll('div')).find((d) => {
     const st = getComputedStyle(d);
-    return st.position === 'absolute' && st.left === '0px' && Math.round(d.getBoundingClientRect().width) === 92;
+    return st.position === 'absolute' && Math.round(d.getBoundingClientRect().width) === 64 && st.borderRadius !== '0px';
   });
   return el ? Math.round(el.getBoundingClientRect().height) : -1;
 }));

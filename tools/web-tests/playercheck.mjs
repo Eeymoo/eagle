@@ -7,7 +7,7 @@ await page.waitForTimeout(2500);
 const rail = await page.evaluate(() => {
   const el = Array.from(document.querySelectorAll('div')).find((d) => {
     const st = getComputedStyle(d);
-    return st.position === 'absolute' && st.left === '0px' && Math.round(d.getBoundingClientRect().width) === 92;
+    return st.position === 'absolute' && Math.round(d.getBoundingClientRect().width) === 64 && st.borderRadius !== '0px';
   });
   if (!el) return { found: false };
   const r = el.getBoundingClientRect();

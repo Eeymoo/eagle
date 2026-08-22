@@ -36,8 +36,8 @@ export interface AppShellNavProps {
 }
 
 const DESKTOP_MIN = 768;
-/** Desktop rail width — text insets across screens use this. */
-export const NAV_WIDTH = 92;
+/** Desktop dock width incl. its edge offset — text insets use this. */
+export const NAV_WIDTH = 88;
 
 /** Bottom bar (mobile) / floating left rail (desktop) shell navigation. */
 export function AppShellNav({ items, activeId }: AppShellNavProps): React.JSX.Element {
@@ -53,11 +53,14 @@ export function AppShellNav({ items, activeId }: AppShellNavProps): React.JSX.El
  * text needs to keep clear (see NAV_WIDTH).
  */
 function NavRail({ items, activeId }: AppShellNavProps): React.JSX.Element {
-  // Partial-height centered panel: clamp(280, 60% of viewport, 420).
+  // Floating glass dock: partial height, vertically centered, detached
+  // from the screen edge. clamp(280, 60% of viewport, 420).
   const { height: vh } = useWindowDimensions();
   const railH = Math.min(420, Math.max(280, Math.round(vh * 0.6)));
   return (
-    <View style={[styles.rail, { height: railH, top: Math.round((vh - railH) / 2) }]} accessibilityRole="menubar">
+    <View
+      style={[styles.rail, { height: railH, top: Math.round((vh - railH) / 2) }, webGlass]}
+      accessibilityRole="menubar">
       <View style={styles.railStack}>
         {items.map((it) => (
           <NavItemButton key={it.id} item={it} active={it.id === activeId} shape="rail" />
@@ -69,7 +72,7 @@ function NavRail({ items, activeId }: AppShellNavProps): React.JSX.Element {
 
 function NavTabs({ items, activeId }: AppShellNavProps): React.JSX.Element {
   return (
-    <View style={styles.tabs} accessibilityRole="menubar">
+    <View style={[styles.tabs, webGlass]} accessibilityRole="menubar">
       {items.map((it) => (
         <NavItemButton key={it.id} item={it} active={it.id === activeId} shape="tab" />
       ))}
@@ -78,6 +81,8 @@ function NavTabs({ items, activeId }: AppShellNavProps): React.JSX.Element {
 }
 
 function NavItemButton({ item, active, shape }: { item: NavItem; active: boolean; shape: 'rail' | 'tab' }): React.JSX.Element {
+  // Desktop hover affordance (RNW mouse events; no-op on native).
+  const [hover, setHover] = React.useState(false);
   return (
     <Pressable
       onPress={item.onPress}
@@ -86,8 +91,11 @@ function NavItemButton({ item, active, shape }: { item: NavItem; active: boolean
       style={({ pressed }) => [
         shape === 'rail' ? styles.railBtn : styles.tabBtn,
         active && (shape === 'rail' ? styles.railBtnActive : styles.tabBtnActive),
+        hover && !active && styles.btnHover,
         pressed && styles.pressed,
       ]}
+      /* eslint-disable-next-line */
+      {...(Platform.OS === 'web' ? { onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false) } : {})}
     >
       {item.icon ? (
         <item.icon
@@ -138,33 +146,46 @@ export function AppShellLayout({
   );
 }
 
+/** RNW-only frosted glass (runtime honors it; ViewStyle types lag). */
+const webGlass = Platform.select({ web: { backdropFilter: 'blur(18px) saturate(140%)' } as object, default: {} as object });
+
 const styles = StyleSheet.create({
   shell: { flex: 1, backgroundColor: '#0e1116' },
   content: { flex: 1, backgroundColor: 'transparent' },
   // Desktop: text-safe inset; full-bleed art opts out with negative margins.
   contentDesktop: { paddingLeft: NAV_WIDTH },
   contentMobile: { marginBottom: 64 }, // keep content clear of the bottom tabs
-  // Desktop floating rail: partial-height centered panel, not a full column.
+  // Desktop floating glass dock — detached from the edge, rounded pill,
+  // translucent so artwork reads through, hairline border for edge
+  // definition (no drop-shadow slop, no opaque slab).
   rail: {
-    position: 'absolute', left: 0, width: NAV_WIDTH, zIndex: 10,
+    position: 'absolute', left: 12, width: NAV_WIDTH - 24, zIndex: 10,
     justifyContent: 'center', alignItems: 'center',
-    // Scrim so icons/labels stay legible over artwork; artwork shows
-    // through — the rail claims no opaque background.
-    backgroundColor: 'rgba(11,14,18,0.55)',
+    borderRadius: 26,
+    backgroundColor: 'rgba(16,20,26,0.72)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
-  railStack: { gap: 6, alignItems: 'center' },
-  railBtn: { alignItems: 'center', gap: 4, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12, minWidth: 72 },
-  railBtnActive: { backgroundColor: 'rgba(91,137,255,0.20)' },
-  railLabel: { color: '#aeb6c2', fontSize: 11 },
-  // Mobile tabs
+  railStack: { gap: 4, alignItems: 'center' },
+  railBtn: {
+    alignItems: 'center', gap: 4, paddingVertical: 12, paddingHorizontal: 8,
+    borderRadius: 18, width: 56,
+  },
+  railBtnActive: { backgroundColor: 'rgba(91,137,255,0.22)' },
+  railLabel: { color: '#98a1af', fontSize: 11, letterSpacing: 0.2 },
+  // Mobile: floating pill tab bar, detached from the bottom edge —
+  // same glass language as the desktop dock.
   tabs: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row',
-    backgroundColor: 'rgba(13,16,21,0.96)', borderTopWidth: 1, borderTopColor: '#1d232d',
-    paddingBottom: Platform.select({ web: 8, default: 24 }), paddingTop: 6, zIndex: 10,
+    position: 'absolute', left: 16, right: 16,
+    bottom: Platform.select({ web: 14, default: 30 }),
+    flexDirection: 'row', zIndex: 10,
+    borderRadius: 24, paddingVertical: 8, paddingHorizontal: 6,
+    backgroundColor: 'rgba(16,20,26,0.82)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
-  tabBtn: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 6, borderRadius: 10 },
-  tabBtnActive: { backgroundColor: 'rgba(91,137,255,0.12)' },
-  tabLabel: { color: '#8b93a1', fontSize: 12 },
+  tabBtn: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 7, borderRadius: 17 },
+  tabBtnActive: { backgroundColor: 'rgba(91,137,255,0.22)' },
+  tabLabel: { color: '#98a1af', fontSize: 12 },
   labelActive: { color: '#fff', fontWeight: '600' },
+  btnHover: { backgroundColor: 'rgba(255,255,255,0.06)' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
 });
