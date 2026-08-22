@@ -12,6 +12,7 @@
  */
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 /** Icon component from @eagle/icons (lucide). Typed structurally so the
  *  web (.web.ts → lucide-react) and native (lucide-react-native) forks
  *  both satisfy it without cross-importing platform typings. */
@@ -71,8 +72,12 @@ function NavRail({ items, activeId }: AppShellNavProps): React.JSX.Element {
 }
 
 function NavTabs({ items, activeId }: AppShellNavProps): React.JSX.Element {
+  // Edge-to-edge (Android 15+): the system gesture bar overlays the app —
+  // lift the dock above the real bottom inset instead of a hardcoded px.
+  const insets = useSafeAreaInsets();
+  const bottom = Platform.select({ web: 14, default: Math.max(30, insets.bottom + 12) });
   return (
-    <View style={[styles.tabs, webGlass]} accessibilityRole="menubar">
+    <View style={[styles.tabs, { bottom }, webGlass]} accessibilityRole="menubar">
       {items.map((it) => (
         <NavItemButton key={it.id} item={it} active={it.id === activeId} shape="tab" />
       ))}
@@ -127,6 +132,8 @@ export function AppShellLayout({
 }): React.JSX.Element {
   const { width, height } = useWindowDimensions();
   const desktop = width >= DESKTOP_MIN;
+  const insets = useSafeAreaInsets();
+  const contentMobile = { marginBottom: 64 + Math.max(0, insets.bottom) };
   return (
     // minHeight from the window so absolutely-positioned nav layers can
     // anchor to the real viewport edges even with short content.
@@ -135,7 +142,7 @@ export function AppShellLayout({
       <View
         style={[
           styles.content,
-          !edgeToEdge && (desktop ? styles.contentDesktop : styles.contentMobile),
+          !edgeToEdge && (desktop ? styles.contentDesktop : contentMobile),
           // Player page: fixed to the screen size — no scroll, video fills.
           edgeToEdge && { height, overflow: 'hidden' as const, backgroundColor: '#000' },
         ]}
@@ -154,7 +161,7 @@ const styles = StyleSheet.create({
   content: { flex: 1, backgroundColor: 'transparent' },
   // Desktop: text-safe inset; full-bleed art opts out with negative margins.
   contentDesktop: { paddingLeft: NAV_WIDTH },
-  contentMobile: { marginBottom: 64 }, // keep content clear of the bottom tabs
+  // mobile inset computed at runtime (see AppShellLayout) — safe area aware
   // Desktop floating glass dock — detached from the edge, rounded pill,
   // translucent so artwork reads through, hairline border for edge
   // definition (no drop-shadow slop, no opaque slab).
@@ -176,7 +183,7 @@ const styles = StyleSheet.create({
   // same glass language as the desktop dock.
   tabs: {
     position: 'absolute', left: 16, right: 16,
-    bottom: Platform.select({ web: 14, default: 30 }),
+    bottom: Platform.select({ web: 14, default: 30 }), // runtime-overridden by insets in NavTabs
     flexDirection: 'row', zIndex: 10,
     borderRadius: 24, paddingVertical: 8, paddingHorizontal: 6,
     backgroundColor: 'rgba(16,20,26,0.82)',

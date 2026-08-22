@@ -11,6 +11,7 @@
     "react-native": "*"
   },
   "dependencies": {
-    "@eagle/icons": "workspace:*"
+    "@eagle/icons": "workspace:*",
+    "react-native-safe-area-context": "5.6.0"
   }
 }

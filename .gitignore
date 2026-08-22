@@ -10,3 +10,6 @@ packages/desktop-app/src-tauri/target/
 packages/desktop-app/src-tauri/gen/
 *.log
 !.github/
+.cache/
+.adb-tmp/
+.agents/
