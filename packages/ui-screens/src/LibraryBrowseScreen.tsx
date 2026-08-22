@@ -76,7 +76,7 @@ export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPla
           onEndReached={() => setShownCount((c) => Math.min(c + PAGE, items.length))}
           renderItem={({ item }) => (
             <Pressable
-              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+              style={({ pressed }) => [styles.card, { width: cardW }, pressed && styles.cardPressed]}
               onPress={() => (item.kind === 'series' ? onOpenSeries(item) : onPlay(item.channelId, 0))}
             >
               {item.posterUrl ? (
