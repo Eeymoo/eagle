@@ -178,5 +178,21 @@ const desk = await page.evaluate(() => {
   return { posterImgs: imgs.length, distinctTopOffsets: rows.size };
 });
 console.log('R2. desktop (1440px) wall rows:', JSON.stringify(desk));
+// alignment audit: last-row centering + 1280 cap on the browse wall
+await page.evaluate(() => window.__nav ? 0 : 0);
+const align = await page.evaluate(() => {
+  const imgs = Array.from(document.querySelectorAll('img')).filter((i) => { const r = i.getBoundingClientRect(); return r.width > 80 && r.height > 100; });
+  if (!imgs.length) return { note: 'no wall imgs' };
+  const leftEdges = imgs.map((i) => Math.round(i.getBoundingClientRect().left));
+  const rightEdges = imgs.map((i) => Math.round(i.getBoundingClientRect().right));
+  return {
+    wallLeft: Math.min(...leftEdges),
+    wallRight: Math.max(...rightEdges),
+    viewport: window.innerWidth,
+    leftMargin: Math.min(...leftEdges),
+    rightMargin: window.innerWidth - Math.max(...rightEdges),
+  };
+});
+console.log('R3. wall balance (margins should be ≈equal):', JSON.stringify(align));
 console.log('errors:', errors.length ? errors.slice(0, 3) : 'none');
 await browser.close();

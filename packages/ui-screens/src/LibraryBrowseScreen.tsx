@@ -37,8 +37,8 @@ export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPla
   const shown = items.slice(0, shownCount);
 
   return (
-    <View style={styles.root}>
-      <View style={styles.appBar}>
+    <View style={[styles.root, desktop && styles.wideRoot]}>
+      <View style={[styles.appBar, desktop && styles.wideInner]}>
         <Pressable onPress={onBack} hitSlop={8} style={({ pressed }) => pressed && styles.cardPressed}>
           <Text style={styles.back}>‹ 返回</Text>
         </Pressable>
@@ -67,7 +67,10 @@ export function LibraryBrowseScreen({ title, loading, errorMessage, items, onPla
           initialNumToRender={12}
           maxToRenderPerBatch={8}
           windowSize={5}
-          columnWrapperStyle={{ gap: GAP, marginBottom: 18 }}
+          // Center rows so an incomplete LAST row (few items, filtered
+          // tails) stays visually balanced on wide desktops.
+          columnWrapperStyle={{ gap: GAP, marginBottom: 18, justifyContent: 'center' }}
+          style={desktop ? styles.wideInner : undefined}
           contentContainerStyle={{ paddingHorizontal: PAD }}
           onEndReachedThreshold={0.5}
           onEndReached={() => setShownCount((c) => Math.min(c + PAGE, items.length))}
@@ -112,8 +115,8 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
   const thumbH = Math.round(thumbW * 0.5625); // 16:9 stills
 
   return (
-    <View style={styles.root}>
-      <View style={styles.appBar}>
+    <View style={[styles.root, desktop && styles.wideRoot]}>
+      <View style={[styles.appBar, desktop && styles.wideInner]}>
         <Pressable onPress={onBack} hitSlop={8} style={({ pressed }) => pressed && styles.cardPressed}>
           <Text style={styles.back}>‹ 返回</Text>
         </Pressable>
@@ -128,7 +131,7 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
           ))}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.listBody}>
+        <ScrollView contentContainerStyle={[styles.listBody, desktop && styles.wideInner]}>
           {episodes.map((ep) => {
             const resume = resumeAt[ep.channelId] ?? 0;
             return (
@@ -159,6 +162,9 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0e1116' },
+  // Desktop: cap content at 1280 centered (matches the library home).
+  wideRoot: { alignItems: 'center' },
+  wideInner: { width: '100%', maxWidth: 1280 },
   appBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingTop: Platform.select({ web: 14, default: 40 }), paddingHorizontal: 16, paddingBottom: 10, gap: 12,
