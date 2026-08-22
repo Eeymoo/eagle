@@ -106,6 +106,20 @@ for (let i = 0; i < 10 && !mounted; i++) {
   mounted = (await page.locator('.player-root, video').count()) > 0;
 }
 console.log('4. player mounted from wall click:', mounted, '| url has t:', /player\//.test(page.url()));
+// 4b. player fixed to screen size, no scroll
+const pbox = await page.evaluate(() => {
+  const el = document.querySelector('.player-root');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { w: Math.round(r.width), h: Math.round(r.height), scroll: document.documentElement.scrollHeight > innerHeight + 4 };
+});
+console.log('4b. player box:', JSON.stringify(pbox), '| rail still up:', await page.evaluate(() => {
+  const el = Array.from(document.querySelectorAll('div')).find((d) => {
+    const st = getComputedStyle(d);
+    return st.position === 'absolute' && st.left === '0px' && Math.round(d.getBoundingClientRect().width) === 92;
+  });
+  return el ? Math.round(el.getBoundingClientRect().height) : -1;
+}));
 
 // --- 5. pause at ~2min → progress recorded --------------------------------
 if (mounted) {

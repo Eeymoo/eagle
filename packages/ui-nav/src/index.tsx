@@ -47,13 +47,17 @@ export function AppShellNav({ items, activeId }: AppShellNavProps): React.JSX.El
 }
 
 /**
- * Desktop rail: icon-first vertical stack, vertically centered, floating
- * over a scrim. Content renders full-bleed beneath it; only text needs
- * to keep clear (see NAV_WIDTH).
+ * Desktop rail: icon-first vertical stack, CENTERED as a partial-height
+ * floating panel (clamped between RAIL_MIN_H and RAIL_MAX_H — never the
+ * full viewport column). Content renders full-bleed beneath it; only
+ * text needs to keep clear (see NAV_WIDTH).
  */
 function NavRail({ items, activeId }: AppShellNavProps): React.JSX.Element {
+  // Partial-height centered panel: clamp(280, 60% of viewport, 420).
+  const { height: vh } = useWindowDimensions();
+  const railH = Math.min(420, Math.max(280, Math.round(vh * 0.6)));
   return (
-    <View style={styles.rail} accessibilityRole="menubar">
+    <View style={[styles.rail, { height: railH, top: Math.round((vh - railH) / 2) }]} accessibilityRole="menubar">
       <View style={styles.railStack}>
         {items.map((it) => (
           <NavItemButton key={it.id} item={it} active={it.id === activeId} shape="rail" />
@@ -124,7 +128,8 @@ export function AppShellLayout({
         style={[
           styles.content,
           !edgeToEdge && (desktop ? styles.contentDesktop : styles.contentMobile),
-          edgeToEdge && styles.contentEdgeToEdge,
+          // Player page: fixed to the screen size — no scroll, video fills.
+          edgeToEdge && { height, overflow: 'hidden' as const, backgroundColor: '#000' },
         ]}
       >
         {children}
@@ -139,10 +144,9 @@ const styles = StyleSheet.create({
   // Desktop: text-safe inset; full-bleed art opts out with negative margins.
   contentDesktop: { paddingLeft: NAV_WIDTH },
   contentMobile: { marginBottom: 64 }, // keep content clear of the bottom tabs
-  contentEdgeToEdge: { backgroundColor: '#000' },
-  // Desktop floating rail
+  // Desktop floating rail: partial-height centered panel, not a full column.
   rail: {
-    position: 'absolute', left: 0, top: 0, bottom: 0, width: NAV_WIDTH, zIndex: 10,
+    position: 'absolute', left: 0, width: NAV_WIDTH, zIndex: 10,
     justifyContent: 'center', alignItems: 'center',
     // Scrim so icons/labels stay legible over artwork; artwork shows
     // through — the rail claims no opaque background.

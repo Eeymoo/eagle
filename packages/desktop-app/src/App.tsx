@@ -331,11 +331,13 @@ function PlayerRoute({ controllers }: { controllers: EagleControllers }): React.
   }, [list.status, channel, navigate]);
 
   if (!channel) {
+    // Transitional state uses the PLAYER's own loading affordance (the
+    // same .spinner the player shows while resolving), on bare black —
+    // no text, no separate 加载中 UI.
     return (
       <View style={styles.playerRoot}>
-        <Text style={styles.hint}>
-          {list.status === 'error' ? `频道列表加载失败：${list.errorMessage ?? ''}` : '频道加载中…'}
-        </Text>
+        {/* same .spinner class the player uses while resolving */}
+        <div className="spinner" style={{ position: 'absolute' }} />
       </View>
     );
   }
