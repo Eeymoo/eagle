@@ -20,6 +20,7 @@
     "@eagle/hdhome-run-plugin": "workspace:*",
     "@eagle/headless-ui": "workspace:*",
     "@eagle/jellyfin-plugin": "workspace:*",
+    "@eagle/jellyfin-video-plugin": "workspace:*",
     "@eagle/m3u-tuner-plugin": "workspace:*",
     "@eagle/rn-ui-plugin": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",

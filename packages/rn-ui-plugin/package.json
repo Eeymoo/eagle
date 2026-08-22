@@ -18,6 +18,8 @@
     "@eagle/jellyfin-video-plugin": "workspace:*",
     "@eagle/m3u-tuner-plugin": "workspace:*",
     "@eagle/ui-screens": "workspace:*",
+    "@eagle/ui-nav": "workspace:*",
+    "@eagle/icons": "workspace:*",
     "expo-application": "~7.0.8",
     "expo-screen-orientation": "~9.0.9",
     "react-native-safe-area-context": "5.6.0"
