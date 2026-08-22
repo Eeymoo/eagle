@@ -86,6 +86,7 @@ export class JellyfinVideoSource extends LiveSourceBase implements LibrarySource
         serverUrl: this.session.serverUrl,
         username: this.session.username,
         password: this.session.password,
+        deviceId: this.session.deviceId,
       });
       return await attempt();
     }
@@ -336,7 +337,11 @@ export const jellyfinVideoPlugin: SourcePlugin = {
     if (!config.serverUrl || !config.username) {
       throw new CoreError('PARSE', 'Jellyfin 媒体库: serverUrl and username are required');
     }
-    const session = await authenticate(port, config);
+    // Distinct DeviceId per source kind (see jellyfin plugin note): video
+    // and live sources must occupy separate device slots or their logins
+    // invalidate each other's tokens (401 loop).
+    const deviceId = `eagle-vod-${port.hash(config.serverUrl)}`;
+    const session = await authenticate(port, { ...config, deviceId });
     // Persist credentials for silent re-login (see authedJson).
     const state = { session: { ...session, password: config.password } };
     const id = `jellyfin-video:${port.hash(config.serverUrl)}`;

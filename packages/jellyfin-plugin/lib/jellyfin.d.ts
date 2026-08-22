@@ -11,11 +11,15 @@ export interface JellyfinSession {
     username?: string;
     /** Retained for silent re-login when the token is invalidated. */
     password?: string;
+    /** Per-source device identity (see deviceHeader). Persisted with state. */
+    deviceId?: string;
 }
 export interface JellyfinConfig {
     serverUrl: string;
     username: string;
     password: string;
+    /** Per-source device identity; defaults to the legacy shared id. */
+    deviceId?: string;
 }
 export type JellyfinChannel = Channel & {
     source: 'jellyfin';

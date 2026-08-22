@@ -9,16 +9,23 @@ export function withParams(url, params) {
     const qs = new URLSearchParams(params).toString();
     return qs ? `${url}?${qs}` : url;
 }
-const CLIENT_HEADER = 'MediaBrowser Client="Eagle", Device="Eagle RN", DeviceId="eagle-mvp-1", Version="0.1.0"';
+/** Stable device id for one source instance. Jellyfin 12 invalidates the
+ *  previous token PER DEVICE on each login — sharing one DeviceId across
+ *  sources (live + video) made their re-logins kick each other (401 loop).
+ *  Deriving from the server url + a discriminator keeps every source on
+ *  its own device slot, so tokens coexist. */
+function deviceHeader(deviceId) {
+    return `MediaBrowser Client="Eagle", Device="Eagle RN", DeviceId="${deviceId}", Version="0.1.0"`;
+}
 /**
  * Auth header carriers across Jellyfin versions: legacy servers read
  * X-Emby-Authorization, Jellyfin 12 requires the standard Authorization
  * header. Send both — servers ignore the one they don't know.
  */
-const AUTH_HEADERS = {
-    Authorization: CLIENT_HEADER,
-    'X-Emby-Authorization': CLIENT_HEADER,
-};
+function authHeadersFor(deviceId) {
+    const h = deviceHeader(deviceId);
+    return { Authorization: h, 'X-Emby-Authorization': h };
+}
 export class JellyfinSource extends LiveSourceBase {
     port;
     session;
@@ -57,6 +64,7 @@ export class JellyfinSource extends LiveSourceBase {
                 serverUrl: this.session.serverUrl,
                 username: this.session.username,
                 password: this.session.password,
+                deviceId: this.session.deviceId,
             });
             return await attempt();
         }
@@ -130,8 +138,9 @@ export async function authenticate(port, config) {
         throw new CoreError('UNSUPPORTED', 'Jellyfin auth requires a Port with postJson');
     }
     const url = joinUrl(config.serverUrl, 'Users/AuthenticateByName');
+    const deviceId = config.deviceId ?? 'eagle-mvp-1';
     try {
-        const result = await port.postJson(url, { Username: config.username, Pw: config.password }, { headers: AUTH_HEADERS });
+        const result = await port.postJson(url, { Username: config.username, Pw: config.password }, { headers: authHeadersFor(deviceId) });
         if (!result?.AccessToken || !result?.User?.Id) {
             throw new CoreError('AUTH_FAILED', 'Jellyfin: malformed auth response');
         }
@@ -141,6 +150,7 @@ export async function authenticate(port, config) {
             userId: result.User.Id,
             accessToken: result.AccessToken,
             username: result.User.Name ?? config.username,
+            deviceId,
         };
     }
     catch (e) {

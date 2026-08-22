@@ -1,11 +1,12 @@
 /**
  * Library browse screens: poster wall for one library (电影/电视剧) and
- * the series detail (episode list). Data flows in via props; the owning
- * route performs the loads. RN syntax — shared by web and native.
+ * the series detail (episode list), Jellyfin web-style.
  *
- * Responsive: the wall's column count derives from the viewport (2 on
- * phones up to ~7 on wide desktops); paging stays 40/batch. Skeletons
- * mirror the wall's shape while loading.
+ * Series detail mirrors Jellyfin: a backdrop hero (series artwork as a wide
+ * letterboxed banner), title block, then episode rows that span the FULL
+ * content width — thumbnail left, title + resume indicator right.
+ * Responsive: 1280 cap on desktop, full-bleed on mobile; skeletons mirror
+ * each layout.
  */
 import React from 'react';
 import { FlatList, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -107,31 +108,85 @@ export interface SeriesScreenProps {
   onBack: () => void;
 }
 
-/** Series detail: linear episode list with resume indicators. */
+/** One episode still: fixed height, width follows the image's natural aspect. */
+function EpisodeStill({ uri, height, radius = 8, fallbackText }: { uri?: string; height: number; radius?: number; fallbackText?: string }): React.JSX.Element {
+  const [ratio, setRatio] = React.useState<number | null>(null);
+  const style = { height, ...(ratio ? { width: Math.round(height * ratio) } : { aspectRatio: 16 / 9 }), borderRadius: radius } as const;
+  if (!uri) {
+    return (
+      <View style={[styles.posterFallbackTile, style]}>
+        <Text style={styles.posterFallbackText}>{fallbackText ?? '▶'}</Text>
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri }}
+      style={style}
+      resizeMode="cover"
+      onLoad={(e) => {
+        const src = (e as unknown as { source?: { width?: number; height?: number; naturalWidth?: number; naturalHeight?: number } }).source ?? {};
+        const w = src.naturalWidth ?? src.width;
+        const h = src.naturalHeight ?? src.height;
+        if (w && h) setRatio(w / h);
+      }}
+    />
+  );
+}
+
+/** Series detail, Jellyfin web-style: hero backdrop + full-width episode rows. */
 export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt, onPlay, onBack }: SeriesScreenProps) {
   const { width } = useWindowDimensions();
   const desktop = width >= 768;
-  const thumbW = desktop ? 160 : 128;
-  const thumbH = Math.round(thumbW * 0.5625); // 16:9 stills
+  // Full content width (same cap as every other library page) — episode
+  // rows align with the top bar's width, not a narrow column.
+  const contentW = Math.min(width, 1280);
+  const heroH = desktop ? 300 : 170;
+  // Episode stills: fixed HEIGHT, width follows each image's natural
+  // aspect ratio (Jellyfin primaries aren't always 16:9 — some are wider).
+  const thumbH = desktop ? 124 : 86;
+  const heroBackdrop = episodes.find((e) => e.posterUrl)?.posterUrl;
 
   return (
-    <View style={[styles.root, desktop && styles.wideRoot]}>
-      <View style={[styles.appBar, desktop && styles.wideInner]}>
-        <Pressable onPress={onBack} hitSlop={8} style={({ pressed }) => pressed && styles.cardPressed}>
-          <Text style={styles.back}>‹ 返回</Text>
-        </Pressable>
-        <Text style={styles.brand} numberOfLines={1}>{title}</Text>
-        <Text style={styles.count}>{episodes.length > 0 ? `${episodes.length} 集` : ''}</Text>
+    <View style={styles.root}>
+      {/* Hero: series artwork as a backdrop with scrim + title, capped to the
+          same content width as the episode rows below (cover-width page). */}
+      <View style={[styles.hero, { height: heroH, maxWidth: contentW, width: '100%', alignSelf: 'center' }]}>
+        {heroBackdrop ? (
+          <Image source={{ uri: heroBackdrop }} style={styles.heroImg} resizeMode="cover" />
+        ) : (
+          <View style={styles.heroFallback} />
+        )}
+        <View style={styles.heroScrim} />
+        <View style={[styles.heroBar, { width: contentW }]}>
+          <Pressable onPress={onBack} hitSlop={8} style={({ pressed }) => pressed && styles.cardPressed}>
+            <Text style={styles.back}>‹ 返回</Text>
+          </Pressable>
+        </View>
+        <View style={[styles.heroTitleWrap, { width: contentW }]}>
+          <Text style={styles.heroTitle} numberOfLines={2}>{title}</Text>
+          {episodes.length > 0 && <Text style={styles.heroSub}>{episodes.length} 集</Text>}
+        </View>
       </View>
+
       {errorMessage ? <Text style={styles.hint}>加载失败：{errorMessage}</Text> : null}
+
       {loading && episodes.length === 0 ? (
-        <View style={{ padding: PAD, gap: 10 }}>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <View key={i} style={[styles.skeletonTile, { width: '100%', height: thumbH + 16, borderRadius: 10 }]} />
+        <View style={[styles.epList, { maxWidth: contentW, width: '100%', alignSelf: 'center' }]}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <View key={i} style={{ flexDirection: 'row', gap: 16 }}>
+              <View style={[styles.skeletonTile, { height: thumbH, aspectRatio: 16 / 9 }]} />
+              <View style={{ flex: 1, gap: 10, justifyContent: 'center' }}>
+                <View style={[styles.skeletonLine, { width: '50%', marginTop: 0 }]} />
+                <View style={[styles.skeletonLine, { width: '90%' }]} />
+                <View style={[styles.skeletonLine, { width: '70%' }]} />
+              </View>
+            </View>
           ))}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={[styles.listBody, desktop && styles.wideInner]}>
+        <ScrollView>
+        <View style={[styles.epList, { maxWidth: contentW, width: '100%' }]}>
           {episodes.map((ep) => {
             const resume = resumeAt[ep.channelId] ?? 0;
             return (
@@ -140,13 +195,14 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
                 style={({ pressed }) => [styles.epRow, pressed && styles.cardPressed]}
                 onPress={() => onPlay(ep.channelId, resume)}
               >
-                {ep.posterUrl ? (
-                  <Image source={{ uri: ep.posterUrl }} style={{ width: thumbW, height: thumbH, borderRadius: 8 }} resizeMode="cover" />
-                ) : (
-                  <View style={[styles.posterFallbackTile, { width: thumbW, height: thumbH, borderRadius: 8 }]}>
-                    <Text style={styles.posterFallbackText}>{ep.subtitle ?? '▶'}</Text>
-                  </View>
-                )}
+                <View>
+                  <EpisodeStill uri={ep.posterUrl} height={thumbH} fallbackText={ep.subtitle ?? '▶'} />
+                  {resume > 0 && (
+                    <View style={styles.epProgressWrap}>
+                      <View style={[styles.epProgressBar, { width: '40%' }]} />
+                    </View>
+                  )}
+                </View>
                 <View style={styles.epMain}>
                   <Text style={styles.epTitle} numberOfLines={1}>{ep.title}</Text>
                   <Text style={styles.cardSub} numberOfLines={1}>{ep.subtitle}{resume > 0 ? ' · 有断点' : ''}</Text>
@@ -154,6 +210,7 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
               </Pressable>
             );
           })}
+        </View>
         </ScrollView>
       )}
     </View>
@@ -180,10 +237,23 @@ const styles = StyleSheet.create({
   posterFallbackText: { color: '#8b93a1', fontSize: 26 },
   cardTitle: { color: '#e6e9ef', fontSize: 13, marginTop: 6 },
   cardSub: { color: '#8b93a1', fontSize: 12, marginTop: 1 },
-  listBody: { padding: 12, gap: 8 },
-  epRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8, borderRadius: 10 },
-  epMain: { flex: 1, gap: 2 },
-  epTitle: { color: '#e6e9ef', fontSize: 14 },
+  // Series hero
+  hero: { position: 'relative', justifyContent: 'flex-end', alignItems: 'center' },
+  heroImg: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  heroFallback: { ...StyleSheet.absoluteFillObject, backgroundColor: '#161b23' },
+  heroScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(10,13,18,0.55)' },
+  heroBar: { position: 'absolute', top: Platform.select({ web: 14, default: 40 }), left: 0, paddingHorizontal: 16 },
+  heroTitleWrap: { paddingHorizontal: 20, paddingBottom: 14 },
+  heroTitle: { color: '#fff', fontSize: 26, fontWeight: '700' },
+  heroSub: { color: '#aeb6c2', fontSize: 13, marginTop: 4 },
+  // Episode list: full content-width rows (Jellyfin detail layout)
+  epList: { padding: 16, gap: 18 },
+  epRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  // Text block follows the cover's width (flex-bounded, not full-stretch).
+  epMain: { flex: 1, gap: 4, paddingTop: 6 },
+  epTitle: { color: '#e6e9ef', fontSize: 15 },
+  epProgressWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4, backgroundColor: 'rgba(42,49,60,0.9)', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
+  epProgressBar: { height: 4, backgroundColor: '#5b89ff', borderBottomLeftRadius: 8 },
   skeletonTile: { borderRadius: 10, backgroundColor: '#1c222b' },
   skeletonLine: { height: 11, borderRadius: 4, backgroundColor: '#1c222b', marginTop: 8 },
 });
