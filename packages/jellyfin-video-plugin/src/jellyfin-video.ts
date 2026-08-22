@@ -160,10 +160,23 @@ export class JellyfinVideoSource extends LiveSourceBase implements LibrarySource
 
   async listLibraries(): Promise<MediaLibrary[]> {
     const url = joinUrl(this.session.serverUrl, `Users/${this.session.userId}/Views`);
-    const dto = await this.authedJson<{ Items?: { Id: string; Name?: string; CollectionType?: string }[] }>(url, { timeoutMs: 15_000 });
+    const dto = await this.authedJson<{
+      Items?: { Id: string; Name?: string; CollectionType?: string; ImageTags?: { Primary?: string } }[];
+    }>(url, { timeoutMs: 15_000 });
     return (dto.Items ?? [])
       .filter((v) => v.Id && v.CollectionType !== 'livetv') // live tv is not a media library
-      .map((v) => ({ id: v.Id, name: v.Name ?? v.Id, kind: v.CollectionType ?? 'unknown', itemCount: 0 }));
+      .map((v) => {
+        const tag = v.ImageTags?.Primary;
+        return {
+          id: v.Id,
+          name: v.Name ?? v.Id,
+          kind: v.CollectionType ?? 'unknown',
+          itemCount: 0,
+          posterUrl: tag
+            ? withParams(joinUrl(this.session.serverUrl, `Items/${v.Id}/Images/Primary`), { tag, quality: '90' })
+            : undefined,
+        };
+      });
   }
 
   async listRecentlyAdded(limit = 20): Promise<LibraryItem[]> {

@@ -88,6 +88,8 @@ export interface MediaLibrary {
   /** Jellyfin CollectionType: movies / tvshows / music / boxsets / … */
   kind: string;
   itemCount: number;
+  /** Original library artwork (Primary image) for the card background. */
+  posterUrl?: string;
 }
 
 /** A browsable item inside a library (movie, series, or episode). */

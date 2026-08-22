@@ -40,11 +40,32 @@ await page.waitForTimeout(20000);
 
 // --- 1. library home --------------------------------------------------------
 await page.evaluate(() => history.pushState(null, '', '/library'));
-await page.getByText('📚 媒体库').click();
+await page.getByText('媒体库 →').click();
 await page.waitForTimeout(6000);
 const home = await text();
 console.log('1. 我的媒体 电视剧:', home.includes('电视剧'), '| 电影:', home.includes('电影'));
 console.log('1b. 最近添加:', home.includes('最近添加'));
+const bgImgs = await page.evaluate(() => Array.from(document.querySelectorAll('img')).map((i) => i.src).filter((u) => u.includes('/Images/Primary')));
+console.log('1d. 库卡背景图数量:', bgImgs.length, '| 含电视剧/电影卡:', bgImgs.length >= 2);
+await page.screenshot({ path: '/_home/Codes/Eagle/tools/web-tests/library-home.png' });
+console.log('1e. screenshot saved');
+const cardDom = await page.evaluate(() => {
+  const out = [];
+  for (const el of document.querySelectorAll('div')) {
+    const r = el.getBoundingClientRect();
+    if (Math.round(r.width) === 200 && Math.round(r.height) === 120) {
+      const img = el.querySelector('img');
+      out.push({
+        label: el.textContent?.trim().slice(0, 10),
+        bgImg: !!img,
+        loaded: img ? img.complete && img.naturalWidth > 0 : false,
+        fit: img ? getComputedStyle(img).objectFit : null,
+      });
+    }
+  }
+  return out;
+});
+console.log('1f. 库卡 DOM:', JSON.stringify(cardDom));
 console.log('1c. 继续观看 (empty ok):', home.includes('继续观看') || !home.includes('继续观看') ? 'n/a-first-run' : '?');
 
 // --- 2. 电影 poster wall ----------------------------------------------------
@@ -132,5 +153,30 @@ if (mounted) {
   }
 }
 
+// --- responsive: mobile viewport wall columns + rail metrics -------------
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForTimeout(1200);
+const mob = await page.evaluate(() => {
+  const body = document.body.innerText;
+  return { libHome: body.includes('我的媒体') || body.includes('继续观看') };
+});
+await page.goto('http://localhost:1420/library', { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(9000);
+const mobWall = await page.evaluate(() => {
+  const imgs = Array.from(document.querySelectorAll('img'));
+  const rows = new Set();
+  for (const i of imgs) { const r = i.getBoundingClientRect(); if (r.width > 80 && r.height > 100) rows.add(Math.round(r.top)); }
+  return { posterImgs: imgs.length, distinctTopOffsets: rows.size };
+});
+console.log('R1. mobile (390px) home ok:', JSON.stringify(mob), '| wall rows:', JSON.stringify(mobWall));
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.waitForTimeout(1200);
+const desk = await page.evaluate(() => {
+  const imgs = Array.from(document.querySelectorAll('img'));
+  const rows = new Set();
+  for (const i of imgs) { const r = i.getBoundingClientRect(); if (r.width > 80 && r.height > 100) rows.add(Math.round(r.top)); }
+  return { posterImgs: imgs.length, distinctTopOffsets: rows.size };
+});
+console.log('R2. desktop (1440px) wall rows:', JSON.stringify(desk));
 console.log('errors:', errors.length ? errors.slice(0, 3) : 'none');
 await browser.close();

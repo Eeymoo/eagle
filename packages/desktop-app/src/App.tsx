@@ -123,7 +123,7 @@ function ListRoute({ controllers }: { controllers: EagleControllers }): React.JS
               onPress={() => navigate('/library')}
               accessibilityRole="button"
             >
-              📚 媒体库
+              媒体库 →
             </Text>
           </View>
           <ChannelListScreen
