@@ -73,9 +73,11 @@ function NavRail({ items, activeId }: AppShellNavProps): React.JSX.Element {
 
 function NavTabs({ items, activeId }: AppShellNavProps): React.JSX.Element {
   // Edge-to-edge (Android 15+): the system gesture bar overlays the app —
-  // lift the dock above the real bottom inset instead of a hardcoded px.
+  // lift the dock above the real bottom inset. Some ROMs (MIUI gesture
+  // hint) report insets.bottom = 0 while still drawing a gesture pill, so
+  // keep a generous native floor.
   const insets = useSafeAreaInsets();
-  const bottom = Platform.select({ web: 14, default: Math.max(30, insets.bottom + 12) });
+  const bottom = Platform.select({ web: 14, default: Math.max(48, insets.bottom + 12) });
   return (
     <View style={[styles.tabs, { bottom }, webGlass]} accessibilityRole="menubar">
       {items.map((it) => (
@@ -133,7 +135,7 @@ export function AppShellLayout({
   const { width, height } = useWindowDimensions();
   const desktop = width >= DESKTOP_MIN;
   const insets = useSafeAreaInsets();
-  const contentMobile = { marginBottom: 64 + Math.max(0, insets.bottom) };
+  const contentMobile = { marginBottom: 82 + Math.max(0, insets.bottom) };
   return (
     // minHeight from the window so absolutely-positioned nav layers can
     // anchor to the real viewport edges even with short content.
