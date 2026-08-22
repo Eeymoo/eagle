@@ -12,22 +12,28 @@
  * Routes:
  *   /                channel list
  *   /settings        source management
- *   /player/:channelId  fullscreen player (chrome-less)
+ *   /player/:channelId  fullscreen player (chrome-less; ?t= resume point)
+ *   /library         Jellyfin-style media library home (继续观看/我的媒体/最近添加)
+ *   /library/:viewId poster wall for one library
+ *   /series/:seriesId  series detail (episode list)
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
-import { Navigate, RouterProvider, createBrowserRouter, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, RouterProvider, createBrowserRouter, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { EagleCore } from '@eagle/core';
-import type { Channel, SourcePlugin } from '@eagle/core';
+import type { Channel, LibraryItem, MediaLibrary, SourcePlugin } from '@eagle/core';
 import { jellyfinPlugin } from '@eagle/jellyfin-plugin';
 import { jellyfinVideoPlugin } from '@eagle/jellyfin-video-plugin';
 import { m3uTunerPlugin } from '@eagle/m3u-tuner-plugin';
 import { hdHomeRunPlugin } from '@eagle/hdhome-run-plugin';
 import { createEagleControllers } from '@eagle/headless-ui';
 import type { EagleControllers } from '@eagle/headless-ui';
-import { useChannelList } from '@eagle/headless-ui';
-import { ChannelListScreen, PlayerScreen, SettingsScreen, ToastProvider, VodPlayerScreen } from '@eagle/ui-screens';
+import { useChannelList, useLibrary, useWatchProgress } from '@eagle/headless-ui';
+import {
+  ChannelListScreen, LibraryBrowseScreen, LibraryHomeScreen, PlayerScreen,
+  SeriesScreen, SettingsScreen, ToastProvider, VodPlayerScreen,
+} from '@eagle/ui-screens';
 import { TauriPort, createSettingsStore, eagleUrl } from './platform.js';
 import './app.css';
 
@@ -90,6 +96,9 @@ function AppRouter({ controllers }: { controllers: EagleControllers }): React.JS
         { path: '/', element: <ListRoute controllers={controllers} /> },
         { path: '/settings', element: <SettingsRoute controllers={controllers} /> },
         { path: '/player/:channelId', element: <PlayerRoute controllers={controllers} /> },
+        { path: '/library', element: <LibraryRoute controllers={controllers} /> },
+        { path: '/library/:viewId', element: <LibraryBrowseRoute controllers={controllers} /> },
+        { path: '/series/:seriesId', element: <SeriesRoute controllers={controllers} /> },
         { path: '*', element: <Navigate to="/" replace /> },
       ]),
     [controllers],
@@ -108,6 +117,14 @@ function ListRoute({ controllers }: { controllers: EagleControllers }): React.JS
           <View style={styles.appBar}>
             <Text style={styles.brand}>Eagle</Text>
             <Text style={styles.brandSub}>直播</Text>
+            <View style={styles.appBarSpacer} />
+            <Text
+              style={styles.libraryLink}
+              onPress={() => navigate('/library')}
+              accessibilityRole="button"
+            >
+              📚 媒体库
+            </Text>
           </View>
           <ChannelListScreen
             controller={controllers.channelList}
@@ -149,6 +166,16 @@ function PlayerRoute({ controllers }: { controllers: EagleControllers }): React.
   const { channelId = '' } = useParams();
   const navigate = useNavigate();
   const list = useChannelList(controllers.channelList);
+  const [searchParams] = useSearchParams();
+  // Resume point from the URL (library continue-watching links carry ?t=);
+  // frozen at mount so re-renders never re-seek playback. Must stay above
+  // any early return — hooks order.
+  const id = decodeURIComponent(channelId);
+  const startAt = useMemo(
+    () => Math.max(0, Number(new URLSearchParams(searchParams).get('t') ?? 0)) || 0,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id],
+  );
 
   // Deep link lands here without the list screen ever mounting — kick the
   // (idempotent) load ourselves so the channel can be resolved.
@@ -156,7 +183,6 @@ function PlayerRoute({ controllers }: { controllers: EagleControllers }): React.
     void controllers.channelList.refresh();
   }, [controllers.channelList]);
 
-  const id = decodeURIComponent(channelId);
   const channel: Channel | undefined = list.channels.find((c) => c.id === id);
 
   // Not found once loaded, OR the list failed (bad network / dead token
@@ -184,6 +210,10 @@ function PlayerRoute({ controllers }: { controllers: EagleControllers }): React.
           controls={controllers.playerControls}
           channel={channel}
           onBack={() => navigate('/')}
+          startAtSec={startAt}
+          onProgress={(pos, dur) =>
+            controllers.watchProgress.record(id, { name: channel.name, posterUrl: channel.logoUrl }, pos, dur)
+          }
         />
       ) : (
         <PlayerScreen
@@ -194,6 +224,144 @@ function PlayerRoute({ controllers }: { controllers: EagleControllers }): React.
         />
       )}
     </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Media library routes (Jellyfin-style modular home, poster walls, series).
+// ---------------------------------------------------------------------------
+
+function LibraryRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const navigate = useNavigate();
+  const lib = useLibrary(controllers.library);
+  const progress = useWatchProgress(controllers.watchProgress);
+
+  useEffect(() => {
+    void controllers.library.refresh();
+  }, [controllers.library]);
+
+  const play = (channelId: string, resumeAtSec: number): void => {
+    const t = resumeAtSec > 0 ? `?t=${Math.floor(resumeAtSec)}` : '';
+    navigate(`/player/${encodeURIComponent(channelId)}${t}`);
+  };
+
+  return (
+    <LibraryHomeScreen
+      available={lib.available}
+      status={lib.status}
+      errorMessage={lib.errorMessage}
+      libraries={lib.libraries}
+      recent={lib.recent}
+      continueWatching={controllers.watchProgress.continueWatching()}
+      onPlay={play}
+      onRemoveProgress={(id) => controllers.watchProgress.remove(id)}
+      onOpenLibrary={(l) => navigate(`/library/${encodeURIComponent(l.id)}`, { state: { title: l.name } })}
+      onOpenSeries={(item) => navigate(`/series/${encodeURIComponent(item.channelId.replace(/^jfv:/, ''))}`, { state: { title: item.title } })}
+      onBack={() => navigate('/')}
+    />
+  );
+}
+
+function LibraryBrowseRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const { viewId = '' } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [title, setTitle] = useState((location.state as { title?: string } | null)?.title ?? '媒体库');
+  const [items, setItems] = useState<LibraryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>();
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(undefined);
+    controllers.library
+      .loadItems(decodeURIComponent(viewId))
+      .then((out) => {
+        if (alive) setItems(out);
+      })
+      .catch((e: unknown) => {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [controllers.library, viewId]);
+
+  const play = (channelId: string, resumeAtSec: number): void => {
+    const t = resumeAtSec > 0 ? `?t=${Math.floor(resumeAtSec)}` : '';
+    navigate(`/player/${encodeURIComponent(channelId)}${t}`);
+  };
+
+  return (
+    <LibraryBrowseScreen
+      title={title}
+      loading={loading}
+      errorMessage={error}
+      items={items}
+      onPlay={play}
+      onOpenSeries={(item) => navigate(`/series/${encodeURIComponent(item.channelId.replace(/^jfv:/, ''))}`, { state: { title: item.title } })}
+      onBack={() => navigate('/library')}
+    />
+  );
+}
+
+function SeriesRoute({ controllers }: { controllers: EagleControllers }): React.JSX.Element {
+  const { seriesId = '' } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const title = (location.state as { title?: string } | null)?.title ?? '剧集';
+  const [episodes, setEpisodes] = useState<LibraryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>();
+  const progress = useWatchProgress(controllers.watchProgress);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(undefined);
+    controllers.library
+      .loadEpisodes(decodeURIComponent(seriesId))
+      .then((out) => {
+        if (alive) setEpisodes(out);
+      })
+      .catch((e: unknown) => {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [controllers.library, seriesId]);
+
+  // Resume map for the episode list (断点标记).
+  const resumeAt = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const ep of episodes) {
+      const at = controllers.watchProgress.resumeFor(ep.channelId);
+      if (at > 0) map[ep.channelId] = at;
+    }
+    return map;
+  }, [episodes, progress.version, controllers.watchProgress]);
+
+  return (
+    <SeriesScreen
+      title={title}
+      loading={loading}
+      errorMessage={error}
+      episodes={episodes}
+      resumeAt={resumeAt}
+      onPlay={(channelId, resumeAtSec) => {
+        const t = resumeAtSec > 0 ? `?t=${Math.floor(resumeAtSec)}` : '';
+        navigate(`/player/${encodeURIComponent(channelId)}${t}`);
+      }}
+      onBack={() => navigate('/library')}
+    />
   );
 }
 
@@ -217,6 +385,8 @@ const styles = {
     gap: 8,
     paddingBottom: 16,
   },
+  appBarSpacer: { flex: 1 } as const,
+  libraryLink: { color: '#5b89ff', fontSize: 14, paddingBottom: 2 },
   brand: { color: '#e8ecf1', fontSize: 22, fontWeight: '700' as const },
   brandSub: { color: '#5b6472', fontSize: 11 },
   hint: { color: '#8b95a5' },

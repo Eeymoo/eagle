@@ -72,3 +72,56 @@ export interface SettingsLike {
 }
 
 export type { Channel, ChannelPage, CoreError, SourceKind, StreamUrl };
+
+// ---------------------------------------------------------------------------
+// Optional media-library capability (VOD-style sources, e.g. Jellyfin
+// media libraries). Sources implement this to expose a Jellyfin-like
+// modular library: libraries ("我的媒体"), recently added, series trees.
+// Heads detect the capability via `implementsLibrary(source)`.
+// ---------------------------------------------------------------------------
+
+/** One library entry as shown in "我的媒体" (movies / tvshows / …). */
+export interface MediaLibrary {
+  /** Server-side folder id (ParentId for item queries). */
+  id: string;
+  name: string;
+  /** Jellyfin CollectionType: movies / tvshows / music / boxsets / … */
+  kind: string;
+  itemCount: number;
+}
+
+/** A browsable item inside a library (movie, series, or episode). */
+export interface LibraryItem {
+  /** The Eagle channel id (playable via resolveStream), e.g. "jfv:abc". */
+  channelId: string;
+  title: string;
+  /** e.g. "(2021)" for movies, "S01E04" context for episodes. */
+  subtitle?: string;
+  posterUrl?: string;
+  year?: number;
+  /** ISO date the server added the item (recently-added sorting). */
+  addedAt?: string;
+  kind: 'movie' | 'series' | 'episode';
+  /** For episodes: the series item id (drill into series detail). */
+  seriesId?: string;
+}
+
+/** Optional capability for media-library sources. */
+export interface LibrarySource {
+  /** Libraries ("views") for "我的媒体" — skip non-video libraries. */
+  listLibraries(): Promise<MediaLibrary[]>;
+  /** Recently added items (mixed movies + new episodes), newest first. */
+  listRecentlyAdded(limit?: number): Promise<LibraryItem[]>;
+  /** Items of one library (movies wall / series wall). */
+  listLibraryItems(viewId: string): Promise<LibraryItem[]>;
+  /** Episodes of one series, season/episode ordered. */
+  listEpisodes(seriesChannelOrItemId: string): Promise<LibraryItem[]>;
+}
+
+/** Type guard: does this source expose the media-library capability? */
+export function implementsLibrary(source: LiveSource): source is LiveSource & LibrarySource {
+  return (
+    typeof (source as LiveSource & Partial<LibrarySource>).listLibraries === 'function' &&
+    typeof (source as LiveSource & Partial<LibrarySource>).listLibraryItems === 'function'
+  );
+}

@@ -37,6 +37,10 @@ export interface VodPlayerScreenProps {
   controls: PlayerControlsController;
   channel: Channel;
   onBack: () => void;
+  /** Resume playback at this position (断点续播). */
+  startAtSec?: number;
+  /** Watch-progress reporting (throttled ~5s + on pause/unmount). */
+  onProgress?: (positionSec: number, durationSec: number) => void;
 }
 
 const fmt = (s: number): string => {
@@ -49,7 +53,7 @@ const fmt = (s: number): string => {
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
 
-export function VodPlayerScreen({ controller, controls, channel, onBack }: VodPlayerScreenProps) {
+export function VodPlayerScreen({ controller, controls, channel, onBack, startAtSec = 0, onProgress }: VodPlayerScreenProps) {
   const state = usePlayer(controller);
   const ui = usePlayerControls(controls);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -64,6 +68,14 @@ export function VodPlayerScreen({ controller, controls, channel, onBack }: VodPl
   useEffect(() => {
     void controller.open(channel);
   }, [controller, channel]);
+
+  // Watch progress: report final position on unmount (route change/back).
+  const lastReport = useRef(0);
+  useEffect(() => () => {
+    const v = videoRef.current;
+    if (v && onProgress && v.duration && v.currentTime > 0) onProgress(v.currentTime, v.duration);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const url = state.stream?.url ?? null;
   const streamHeaders = state.stream?.headers ?? null;
@@ -194,18 +206,46 @@ export function VodPlayerScreen({ controller, controls, channel, onBack }: VodPl
           playsInline
           autoPlay
           onClick={onVideoTap}
-          onPlaying={() => controller.onMediaPlaying()}
-          onPause={() => controller.onMediaPaused()}
+          onPlaying={() => {
+            controller.onMediaPlaying();
+            // 断点续播 re-assert: the browser can drop the seek made at
+            // loadedmetadata under autoplay (race with data availability).
+            const v = videoRef.current;
+            if (v && startAtSec > 0 && v.currentTime < startAtSec - 5) {
+              v.currentTime = startAtSec;
+            }
+          }}
+          onCanPlay={() => {
+            const v = videoRef.current;
+            if (v && startAtSec > 0 && v.currentTime < startAtSec - 5) {
+              v.currentTime = startAtSec;
+            }
+          }}
+          onPause={() => {
+            controller.onMediaPaused();
+            const v = videoRef.current;
+            if (v && onProgress && v.duration) onProgress(v.currentTime, v.duration);
+          }}
           onWaiting={() => controller.onMediaLoading()}
           onTimeUpdate={() => {
             const v = videoRef.current;
             if (!v) return;
             const buf = v.buffered.length > 0 ? v.buffered.end(v.buffered.length - 1) : 0;
             setProgress({ t: v.currentTime, dur: v.duration || 0, buf });
+            if (onProgress && v.duration && v.currentTime - lastReport.current > 5) {
+              lastReport.current = v.currentTime;
+              onProgress(v.currentTime, v.duration);
+            }
           }}
           onLoadedMetadata={() => {
             const v = videoRef.current;
-            if (v) setProgress((p) => ({ ...p, dur: v.duration || 0 }));
+            if (v) {
+              setProgress((p) => ({ ...p, dur: v.duration || 0 }));
+              // 断点续播: seek once metadata is known (duration available).
+              if (startAtSec > 0 && startAtSec < (v.duration || Infinity) - 5) {
+                v.currentTime = startAtSec;
+              }
+            }
           }}
           onError={() => controller.onMediaError(describeVideoError(videoRef.current?.error))}
         />

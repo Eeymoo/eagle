@@ -76,6 +76,11 @@ export class EagleCore {
     }));
   }
 
+  /** Live source instances (heads probe optional capabilities, e.g. libraries). */
+  getSources(): LiveSource[] {
+    return [...this.sources.values()].map(({ source }) => source);
+  }
+
   /** Add a source via its plugin: connect → persist → mount. */
   async addSource(kind: string, input: PluginConfig): Promise<SourceRef> {
     const plugin = this.plugins.get(kind);

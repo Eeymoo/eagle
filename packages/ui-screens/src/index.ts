@@ -24,3 +24,7 @@ export type { PlayerScreenProps } from './PlayerScreen';
 // channels. Live channels keep PlayerScreen (LIVE semantics, no seek).
 export { VodPlayerScreen } from './VodPlayerScreen';
 export type { VodPlayerScreenProps } from './VodPlayerScreen';
+export { LibraryHomeScreen } from './LibraryHomeScreen.js';
+export type { LibraryHomeScreenProps } from './LibraryHomeScreen.js';
+export { LibraryBrowseScreen, SeriesScreen } from './LibraryBrowseScreen.js';
+export type { LibraryBrowseScreenProps, SeriesScreenProps } from './LibraryBrowseScreen.js';

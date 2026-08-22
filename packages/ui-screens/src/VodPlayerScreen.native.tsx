@@ -22,7 +22,7 @@ const Video = RawVideo as unknown as React.ComponentType<{
   paused?: boolean;
   controls?: boolean;
   ignoreSilentSwitch?: string;
-  onLoad?: () => void;
+  onLoad?: (data?: { duration?: number }) => void;
   onProgress?: (data: { currentPosition: number; seekableDuration: number }) => void;
   onError?: (e: unknown) => void;
   ref?: React.Ref<VideoHandle>;
@@ -54,6 +54,10 @@ export interface VodPlayerScreenProps {
   controls: PlayerControlsController;
   channel: Channel;
   onBack: () => void;
+  /** Resume playback at this position (断点续播). */
+  startAtSec?: number;
+  /** Watch-progress reporting (throttled ~5s). */
+  onProgress?: (positionSec: number, durationSec: number) => void;
 }
 
 const fmt = (s: number): string => {
@@ -64,11 +68,12 @@ const fmt = (s: number): string => {
   return h > 0 ? `${h}:${String(m % 60).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 };
 
-export function VodPlayerScreen({ controller, controls, channel, onBack }: VodPlayerScreenProps) {
+export function VodPlayerScreen({ controller, controls, channel, onBack, startAtSec = 0, onProgress: reportProgress }: VodPlayerScreenProps) {
   const state = usePlayer(controller);
   const ui = usePlayerControls(controls);
   const insets = useSafeAreaInsets();
   const videoRef = useRef<VideoHandle | null>(null);
+  const lastReport = React.useRef(0);
   const trackWidth = useRef(0);
   const [progress, setProgress] = React.useState({ t: 0, dur: 0 });
 
@@ -113,8 +118,20 @@ export function VodPlayerScreen({ controller, controls, channel, onBack }: VodPl
             paused={ui.paused}
             controls={false}
             ignoreSilentSwitch="ignore"
-            onLoad={() => controller.onMediaPlaying()}
-            onProgress={(d) => setProgress({ t: d.currentPosition, dur: d.seekableDuration || 0 })}
+            onLoad={(d) => {
+              controller.onMediaPlaying();
+              // 断点续播: seek once duration is known.
+              if (startAtSec > 0 && d?.duration && startAtSec < d.duration - 5) {
+                videoRef.current?.seek(startAtSec);
+              }
+            }}
+            onProgress={(d) => {
+              setProgress({ t: d.currentPosition, dur: d.seekableDuration || 0 });
+              if (reportProgress && d.seekableDuration && d.currentPosition - lastReport.current > 5) {
+                lastReport.current = d.currentPosition;
+                reportProgress(d.currentPosition, d.seekableDuration);
+              }
+            }}
             ref={(v: VideoHandle | null) => { videoRef.current = v; }}
             onError={(e) => controller.onMediaError(describeVideoError(e))}
           />

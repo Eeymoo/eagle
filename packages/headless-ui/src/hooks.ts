@@ -15,6 +15,10 @@ import { HealthController } from './health.js';
 import type { HealthState } from './health.js';
 import { PlayerControlsController } from './player-controls.js';
 import type { PlayerControlsState } from './player-controls.js';
+import { WatchProgressController } from './watch-progress.js';
+import type { WatchProgressState } from './watch-progress.js';
+import { LibraryController } from './library.js';
+import type { LibraryState } from './library.js';
 
 /** Subscribe to a controller's state with a stable snapshot. */
 export function useChannelList(controller: ChannelListController): ChannelListState {
@@ -63,4 +67,12 @@ export function usePlayerControls(controller: PlayerControlsController): PlayerC
     controller.getState,
     controller.getState,
   );
+}
+
+export function useWatchProgress(controller: WatchProgressController): WatchProgressState {
+  return useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
+}
+
+export function useLibrary(controller: LibraryController): LibraryState {
+  return useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
 }

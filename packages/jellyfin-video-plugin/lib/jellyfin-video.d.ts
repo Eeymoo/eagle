@@ -10,11 +10,12 @@
 import { LiveSourceBase } from '@eagle/core';
 import type { ListChannelsOpts, SourcePlugin } from '@eagle/core';
 import type { Channel, ChannelPage, Port, StreamUrl } from '@eagle/core';
+import type { MediaLibrary, LibraryItem, LibrarySource } from '@eagle/core';
 import type { JellyfinSession } from '@eagle/jellyfin-plugin';
 export type JellyfinVideoChannel = Channel & {
     source: 'jellyfin-video';
 };
-export declare class JellyfinVideoSource extends LiveSourceBase {
+export declare class JellyfinVideoSource extends LiveSourceBase implements LibrarySource {
     private readonly port;
     private session;
     readonly kind: "jellyfin-video";
@@ -31,6 +32,11 @@ export declare class JellyfinVideoSource extends LiveSourceBase {
     private authedJson;
     listChannels(opts?: ListChannelsOpts): Promise<ChannelPage>;
     private toChannel;
+    listLibraries(): Promise<MediaLibrary[]>;
+    listRecentlyAdded(limit?: number): Promise<LibraryItem[]>;
+    listLibraryItems(viewId: string): Promise<LibraryItem[]>;
+    listEpisodes(seriesChannelOrItemId: string): Promise<LibraryItem[]>;
+    private toLibraryItem;
     resolveStream(channelId: string): Promise<StreamUrl>;
 }
 /** Connection input for the Jellyfin video-mode plugin. */

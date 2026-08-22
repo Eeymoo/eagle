@@ -9,6 +9,10 @@ import { PlayerController } from './player.js';
 import { SourcesController } from './sources.js';
 import { HealthController } from './health.js';
 import { PlayerControlsController } from './player-controls.js';
+import { WatchProgressController } from './watch-progress.js';
+import { LibraryController } from './library.js';
+import { implementsLibrary } from '@eagle/core';
+import type { MediaLibrary, LibraryItem } from '@eagle/core';
 import type { EagleCore } from '@eagle/core';
 
 export interface EagleControllers {
@@ -18,6 +22,8 @@ export interface EagleControllers {
   player: PlayerController;
   health: HealthController;
   playerControls: PlayerControlsController;
+  watchProgress: WatchProgressController;
+  library: LibraryController;
 }
 
 export interface CreateEagleControllersOptions {
@@ -48,6 +54,32 @@ export function createEagleControllers(
     subscribe: (l) => core.subscribe(l),
   });
   const player = new PlayerController({ resolve: (id) => core.resolveStream(id) });
+  const watchProgress = new WatchProgressController({
+    get: (key, fallback) => core.settingsStore.get(key).then((v) => (v === undefined ? fallback : v as typeof fallback)),
+    set: (key, value) => core.settingsStore.set(key, value),
+  });
+  // First capable library source wins (single Jellyfin library in practice).
+  const librarySource = () => core.getSources().find((s) => implementsLibrary(s));
+  const library = new LibraryController({
+    loadLibraries: async (): Promise<MediaLibrary[] | null> => {
+      const src = librarySource();
+      return src ? src.listLibraries() : null;
+    },
+    loadRecent: async (limit): Promise<LibraryItem[] | null> => {
+      const src = librarySource();
+      return src ? src.listRecentlyAdded(limit) : null;
+    },
+    loadItems: (viewId) => {
+      const src = librarySource();
+      if (!src) return Promise.resolve([]);
+      return src.listLibraryItems(viewId);
+    },
+    loadEpisodes: (seriesId) => {
+      const src = librarySource();
+      if (!src) return Promise.resolve([]);
+      return src.listEpisodes(seriesId);
+    },
+  });
   const playerControls = new PlayerControlsController({ hideDelayMs: 3000 });
   const health = new HealthController({
     port: {
@@ -95,5 +127,5 @@ export function createEagleControllers(
     if (st.status === 'playing') health.markOk(st.channel.id);
   });
 
-  return { channelList, addSourceForm, sources, player, health, playerControls };
+  return { channelList, addSourceForm, sources, player, health, playerControls, watchProgress, library };
 }

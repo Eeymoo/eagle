@@ -1,3 +1,4 @@
+import type { LiveSource } from './source.js';
 import type { SourcePlugin, PluginConfig, PluginConnection } from './plugin.js';
 import type { Channel, Port, SettingsStore, SourceRef, StreamUrl } from './types.js';
 /** Persisted descriptor for one configured source (re-created on launch). */
@@ -28,6 +29,8 @@ export declare class EagleCore {
     /** Restore previously configured sources from settings. */
     hydrate(): Promise<void>;
     listSources(): SourceRef[];
+    /** Live source instances (heads probe optional capabilities, e.g. libraries). */
+    getSources(): LiveSource[];
     /** Add a source via its plugin: connect → persist → mount. */
     addSource(kind: string, input: PluginConfig): Promise<SourceRef>;
     removeSource(id: string): Promise<void>;

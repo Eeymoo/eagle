@@ -13,10 +13,12 @@ import { authenticate, joinUrl, withParams } from '@eagle/jellyfin-plugin';
 /** Containers a browser <video> can play directly (static streaming), in
  *  preference order — mp4 is universally the safest choice. */
 const CONTAINER_PREFERENCE = ['mp4', 'm4v', 'webm', 'mov'];
-/** Movies + episodes; cap so pathological libraries don't stall the list. */
+/** Movies + episodes; cap so pathological libraries don't stall the list.
+ *  Must comfortably exceed the server's total: library poster walls play
+ *  items that PlayerRoute resolves through this flat list. */
 const INCLUDE_TYPES = 'Movie,Episode';
 const PAGE_SIZE = 500;
-const MAX_ITEMS = 4000;
+const MAX_ITEMS = 12000;
 export class JellyfinVideoSource extends LiveSourceBase {
     port;
     session;
@@ -121,6 +123,77 @@ export class JellyfinVideoSource extends LiveSourceBase {
                 : undefined,
             group: item.SeriesName ?? (isEpisode ? undefined : '电影'),
             isVod: true, // on-demand: seekable, has duration, no LIVE semantics
+        };
+    }
+    // ------------------------------------------------------------------
+    // Media-library capability (Jellyfin-style modular browsing).
+    // ------------------------------------------------------------------
+    async listLibraries() {
+        const url = joinUrl(this.session.serverUrl, `Users/${this.session.userId}/Views`);
+        const dto = await this.authedJson(url, { timeoutMs: 15_000 });
+        return (dto.Items ?? [])
+            .filter((v) => v.Id && v.CollectionType !== 'livetv') // live tv is not a media library
+            .map((v) => ({ id: v.Id, name: v.Name ?? v.Id, kind: v.CollectionType ?? 'unknown', itemCount: 0 }));
+    }
+    async listRecentlyAdded(limit = 20) {
+        const url = withParams(joinUrl(this.session.serverUrl, `Users/${this.session.userId}/Items`), {
+            IncludeItemTypes: 'Movie,Episode',
+            Recursive: 'true',
+            SortBy: 'DateCreated',
+            SortOrder: 'Descending',
+            Limit: String(limit),
+            EnableImages: 'true',
+            ImageTypeLimit: '1',
+        });
+        const dto = await this.authedJson(url, { timeoutMs: 15_000 });
+        return (dto.Items ?? []).map((i) => this.toLibraryItem(i));
+    }
+    async listLibraryItems(viewId) {
+        const url = withParams(joinUrl(this.session.serverUrl, `Users/${this.session.userId}/Items`), {
+            ParentId: viewId,
+            IncludeItemTypes: 'Movie,Series',
+            Recursive: 'true',
+            SortBy: 'SortName',
+            SortOrder: 'Ascending',
+            EnableImages: 'true',
+            ImageTypeLimit: '1',
+        });
+        const dto = await this.authedJson(url, { timeoutMs: 15_000 });
+        return (dto.Items ?? []).map((i) => this.toLibraryItem(i));
+    }
+    async listEpisodes(seriesChannelOrItemId) {
+        const seriesId = seriesChannelOrItemId.replace(/^jfv:/, '');
+        const url = withParams(joinUrl(this.session.serverUrl, `Users/${this.session.userId}/Items`), {
+            ParentId: seriesId,
+            IncludeItemTypes: 'Episode',
+            Recursive: 'true',
+            SortBy: 'ParentIndexNumber,IndexNumber',
+            SortOrder: 'Ascending',
+            EnableImages: 'true',
+            ImageTypeLimit: '1',
+        });
+        const dto = await this.authedJson(url, { timeoutMs: 15_000 });
+        return (dto.Items ?? []).map((i) => this.toLibraryItem(i));
+    }
+    toLibraryItem(item) {
+        const tag = item.ImageTags?.Primary;
+        const isEpisode = item.Type === 'Episode';
+        const subtitle = isEpisode
+            ? item.ParentIndexNumber != null && item.IndexNumber != null
+                ? `S${String(item.ParentIndexNumber).padStart(2, '0')}E${String(item.IndexNumber).padStart(2, '0')}`
+                : item.SeriesName
+            : item.ProductionYear ? String(item.ProductionYear) : undefined;
+        return {
+            channelId: `jfv:${item.Id}`,
+            title: item.Name ?? item.Id,
+            subtitle,
+            posterUrl: tag
+                ? withParams(joinUrl(this.session.serverUrl, `Items/${item.Id}/Images/Primary`), { tag, quality: '90' })
+                : undefined,
+            year: item.ProductionYear,
+            addedAt: item.DateCreated,
+            kind: item.Type === 'Series' ? 'series' : item.Type === 'Episode' ? 'episode' : 'movie',
+            seriesId: item.SeriesId,
         };
     }
     async resolveStream(channelId) {
