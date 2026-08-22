@@ -141,6 +141,9 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
   // Full content width (same cap as every other library page) — episode
   // rows align with the top bar's width, not a narrow column.
   const contentW = Math.min(width, 1280);
+  // Desktop nav rail (@eagle/ui-nav NAV_WIDTH): the hero is FULL-BLEED —
+  // artwork runs under the floating rail, only text keeps the inset.
+  const railInset = desktop ? 92 : 0;
   const heroH = desktop ? 300 : 170;
   // Episode stills: fixed HEIGHT, width follows each image's natural
   // aspect ratio (Jellyfin primaries aren't always 16:9 — some are wider).
@@ -151,19 +154,19 @@ export function SeriesScreen({ title, loading, errorMessage, episodes, resumeAt,
     <View style={styles.root}>
       {/* Hero: series artwork as a backdrop with scrim + title, capped to the
           same content width as the episode rows below (cover-width page). */}
-      <View style={[styles.hero, { height: heroH, maxWidth: contentW, width: '100%', alignSelf: 'center' }]}>
+      <View style={[styles.hero, desktop && { marginLeft: -railInset, maxWidth: contentW + railInset }]}>
         {heroBackdrop ? (
           <Image source={{ uri: heroBackdrop }} style={styles.heroImg} resizeMode="cover" />
         ) : (
           <View style={styles.heroFallback} />
         )}
         <View style={styles.heroScrim} />
-        <View style={[styles.heroBar, { width: contentW }]}>
+        <View style={[styles.heroBar, { width: contentW, ...(desktop ? { marginLeft: railInset } : null) }]}>
           <Pressable onPress={onBack} hitSlop={8} style={({ pressed }) => pressed && styles.cardPressed}>
             <Text style={styles.back}>‹ 返回</Text>
           </Pressable>
         </View>
-        <View style={[styles.heroTitleWrap, { width: contentW }]}>
+        <View style={[styles.heroTitleWrap, { width: contentW, ...(desktop ? { marginLeft: railInset } : null) }]}>
           <Text style={styles.heroTitle} numberOfLines={2}>{title}</Text>
           {episodes.length > 0 && <Text style={styles.heroSub}>{episodes.length} 集</Text>}
         </View>

@@ -28,7 +28,8 @@
     "react-native-web": "^0.21.2",
     "react-router-dom": "^7.18.2",
     "@eagle/ui-nav": "workspace:*",
-    "@eagle/settings-ui": "workspace:*"
+    "@eagle/settings-ui": "workspace:*",
+    "@eagle/icons": "workspace:*"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0",

@@ -17,5 +17,10 @@
   "devDependencies": {
     "expo": "~54.0.37",
     "react-native": "0.81.4"
+  },
+  "dependencies": {
+    "lucide-react": "0.460.0",
+    "lucide-react-native": "0.460.0",
+    "react-native-svg": "^15.15.5"
   }
 }

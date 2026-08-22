@@ -1,16 +1,16 @@
 {
-  "name": "@eagle/ui-nav",
+  "name": "@eagle/icons",
   "version": "0.1.0",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
-  "peerDependencies": {
-    "react": "*",
-    "react-native": "*"
-  },
   "dependencies": {
-    "@eagle/icons": "workspace:*"
+    "lucide-react-native": "0.460.0",
+    "react-native-svg": "*"
+  },
+  "peerDependencies": {
+    "react": "*"
   }
 }

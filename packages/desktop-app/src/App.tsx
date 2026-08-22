@@ -35,6 +35,7 @@ import {
   SeriesScreen, SettingsScreen, ToastProvider, VodPlayerScreen,
 } from '@eagle/ui-screens';
 import { AppShellLayout, AppShellNav } from '@eagle/ui-nav';
+import { Library, Settings, Tv } from '@eagle/icons';
 import type { NavItem } from '@eagle/ui-nav';
 import { SettingsHubScreen, SettingsSectionScreen } from '@eagle/settings-ui';
 import type { SettingsSchema } from '@eagle/settings-ui';
@@ -109,9 +110,12 @@ function AppRouter({ controllers }: { controllers: EagleControllers }): React.JS
             { path: 'library', element: <LibraryRoute controllers={controllers} /> },
             { path: 'library/:viewId', element: <LibraryBrowseRoute controllers={controllers} /> },
             { path: 'series/:seriesId', element: <SeriesRoute controllers={controllers} /> },
+            // Player lives INSIDE the shell: the nav stays visible during
+            // playback and disappears only in (element-level) fullscreen,
+            // which the browser hides by design.
+            { path: 'player/:channelId', element: <PlayerRoute controllers={controllers} /> },
           ],
         },
-        { path: '/player/:channelId', element: <PlayerRoute controllers={controllers} /> },
         { path: '*', element: <Navigate to="/" replace /> },
       ]),
     [controllers],
@@ -129,12 +133,15 @@ function ShellRoute({ controllers }: { controllers: EagleControllers }): React.J
   const first = location.pathname.split('/')[1] || '';
   const activeId = first === '' ? 'library' : first;
   const items: NavItem[] = [
-    { id: 'library', label: '媒体库', onPress: () => navigate('/library') },
-    { id: 'live', label: '直播', onPress: () => navigate('/live') },
-    { id: 'settings', label: '设置', onPress: () => navigate('/settings') },
+    { id: 'library', label: '媒体库', icon: Library, onPress: () => navigate('/library') },
+    { id: 'live', label: '直播', icon: Tv, onPress: () => navigate('/live') },
+    { id: 'settings', label: '设置', icon: Settings, onPress: () => navigate('/settings') },
   ];
+  // Player pages run edge-to-edge: the nav stays visible over the video
+  // and disappears only in element-level fullscreen (browser hides it).
+  const edgeToEdge = first === 'player';
   return (
-    <AppShellLayout nav={<AppShellNav items={items} activeId={activeId} />}>
+    <AppShellLayout nav={<AppShellNav items={items} activeId={activeId} />} edgeToEdge={edgeToEdge}>
       <Outlet />
     </AppShellLayout>
   );

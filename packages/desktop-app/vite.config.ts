@@ -5,6 +5,9 @@ import { Readable } from 'node:stream';
 
 const pkgs = (name: string): string =>
   resolve(import.meta.dirname, '..', name, 'src', 'index.ts');
+/** Like pkgs but for packages whose entry is .tsx (component packages). */
+const pkgsX = (name: string): string =>
+  resolve(import.meta.dirname, '..', name, 'src', 'index.tsx');
 
 // Tauri dev server conventions: fixed port, strictHostNames for mobile targets.
 const host = process.env.TAURI_DEV_HOST;
@@ -133,6 +136,11 @@ export default defineConfig({
       { find: /^@eagle\/m3u-tuner-plugin$/, replacement: pkgs('m3u-tuner-plugin') },
       { find: /^@eagle\/hdhome-run-plugin$/, replacement: pkgs('hdhome-run-plugin') },
       { find: /^@eagle\/ui-screens$/, replacement: pkgs('ui-screens') },
+      { find: /^@eagle\/ui-nav$/, replacement: pkgsX('ui-nav') },
+      { find: /^@eagle\/settings-ui$/, replacement: pkgsX('settings-ui') },
+      // Directory target (not full file) so the platform-fork resolution
+      // picks src/index.web.ts on web and src/index.ts on native.
+      { find: /^@eagle\/icons$/, replacement: resolve(import.meta.dirname, '..', 'icons', 'src') },
     ],
     // Platform forks: .web.tsx wins over .native.tsx / .tsx.
     extensions: ['.web.tsx', '.web.ts', '.tsx', '.ts', '.js', '.jsx'],
@@ -147,6 +155,12 @@ export default defineConfig({
       '@eagle/jellyfin-video-plugin',
       '@eagle/m3u-tuner-plugin',
       '@eagle/hdhome-run-plugin',
+      '@eagle/ui-nav',
+      '@eagle/settings-ui',
+      '@eagle/icons',
+      // RN-entry icon deps pull flow-syntax react-native into esbuild;
+      // the .web.ts fork of @eagle/icons (lucide-react) avoids them here.
+      'lucide-react-native',
     ],
     include: ['react-native-web', 'hls.js'],
   },

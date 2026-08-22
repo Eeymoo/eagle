@@ -109,10 +109,16 @@ console.log('4. player mounted from wall click:', mounted, '| url has t:', /play
 
 // --- 5. pause at ~2min → progress recorded --------------------------------
 if (mounted) {
-  await page.evaluate(() => {
-    const v = document.querySelector('video');
-    if (v && v.duration) { v.currentTime = 120; v.dispatchEvent(new Event('pause')); }
-  });
+  // seek once the media has metadata (slow loads used to skip the seek)
+  let sought = false;
+  for (let i = 0; i < 12 && !sought; i++) {
+    sought = await page.evaluate(() => {
+      const v = document.querySelector('video');
+      if (v && v.duration) { v.currentTime = 120; v.dispatchEvent(new Event('pause')); return true; }
+      return false;
+    });
+    if (!sought) await page.waitForTimeout(1500);
+  }
   await page.waitForTimeout(800);
   await page.evaluate(() => history.pushState(null, '', '/library'));
   await page.goBack().catch(() => page.evaluate(() => history.back()));
