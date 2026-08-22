@@ -3,7 +3,7 @@ const browser = await chromium.launch({ executablePath: '/_home/.cache/ms-playwr
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on('pageerror', e => errors.push(e.message.slice(0, 120)));
-await page.goto('http://localhost:1420/', { waitUntil: 'domcontentloaded' });
+await page.goto('http://localhost:1420/live', { waitUntil: 'domcontentloaded' });
 await page.evaluate(() => localStorage.clear());
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForTimeout(600);
