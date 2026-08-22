@@ -106,6 +106,25 @@ for (let i = 0; i < 24 && !mounted; i++) {
   mounted = (await page.locator('.player-root, video').count()) > 0;
 }
 console.log('4. player mounted from wall click:', mounted, '| url has t:', /player\//.test(page.url()));
+// 4a2. default fit = contain (whole frame visible, letterboxed)
+const fit = await page.evaluate(() => {
+  const v = document.querySelector('video');
+  return v ? getComputedStyle(v).objectFit : null;
+});
+console.log('4a2. default object-fit (want contain):', fit);
+// 4a3. toggle to cover via the fit button
+const toggled = await page.evaluate(() => {
+  const btn = Array.from(document.querySelectorAll('button')).find((b) => (b.title ?? '').includes('画面适应') || (b.title ?? '').includes('填充'));
+  if (!btn) return false;
+  btn.click();
+  return true;
+});
+await page.waitForTimeout(600);
+const fit2 = await page.evaluate(() => {
+  const v = document.querySelector('video');
+  return v ? getComputedStyle(v).objectFit : null;
+});
+console.log('4a3. after toggle (want cover):', fit2, '| btn found:', toggled);
 // 4b. player fixed to screen size, no scroll
 const pbox = await page.evaluate(() => {
   const el = document.querySelector('.player-root');

@@ -130,6 +130,8 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
 
   // VOD progress (currentTime/duration) drives the seek bar.
   const [progress, setProgress] = React.useState({ t: 0, dur: 0 });
+  // Video fit: contain (whole frame) is the standard default; cover is opt-in.
+  const [cover, setCover] = React.useState(false);
   const isVod = channel.isVod === true;
   const fmt = (s: number): string => {
     if (!Number.isFinite(s)) return '--:--';
@@ -164,6 +166,7 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
         <video
           ref={videoRef}
           className="player-video"
+          style={{ objectFit: cover ? 'cover' : 'contain' }}
           playsInline
           autoPlay
           // 点视频本体也要能唤出/收起控制条（video 占满画面，根容器空白几乎点不到）。
@@ -192,6 +195,11 @@ export function PlayerScreen({ controller, controls, channel, onBack }: PlayerSc
             </button>
             <span className="player-title">{channel.name}</span>
             {playing && !isVod && <span className="live">LIVE</span>}
+            <button
+              className="vod-tool"
+              onClick={() => setCover((c) => !c)}
+              title={cover ? '切换为画面适应（完整显示）' : '切换为填充屏幕（裁切边缘）'}
+            >{cover ? '⬛' : '⤢'}</button>
           </div>
           <button className="center-btn" onClick={() => controls.togglePlayPause()}>
             {ui.paused ? '▶' : '❚❚'}

@@ -52,6 +52,12 @@ const fmt = (s: number): string => {
 };
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
+/** Video fit modes: contain shows the WHOLE frame (letterbox, standard
+ *  default); cover fills the screen and crops the edges (opt-in). */
+const FITS = [
+  { css: 'contain', icon: '⤢', label: '适应' },
+  { css: 'cover', icon: '⬛', label: '填充' },
+] as const;
 
 export function VodPlayerScreen({ controller, controls, channel, onBack, startAtSec = 0, onProgress }: VodPlayerScreenProps) {
   const state = usePlayer(controller);
@@ -64,6 +70,9 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
   const [speedIdx, setSpeedIdx] = React.useState(1); // SPEEDS[1] = 1x
   const [muted, setMuted] = React.useState(false);
   const [volume, setVolume] = React.useState(1);
+  // Video fit: CONTAIN by default (whole frame visible, letterboxed — the
+  // standard player behavior). COVER (fill screen, crops edges) is opt-in.
+  const [fitIdx, setFitIdx] = React.useState(0); // FITS[0] = contain
 
   useEffect(() => {
     void controller.open(channel);
@@ -203,6 +212,7 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
         <video
           ref={videoRef}
           className="player-video"
+          style={{ objectFit: FITS[fitIdx].css }}
           playsInline
           autoPlay
           onClick={onVideoTap}
@@ -256,6 +266,11 @@ export function VodPlayerScreen({ controller, controls, channel, onBack, startAt
           <div className="player-bar">
             <button className="player-back" onClick={onBack}>‹ 返回</button>
             <span className="player-title">{channel.name}</span>
+            <button
+              className="vod-tool"
+              onClick={() => setFitIdx((i) => (i + 1) % FITS.length)}
+              title={fitIdx === 0 ? '画面适应（完整显示）' : '填充屏幕（裁切边缘）'}
+            >{FITS[fitIdx].icon}</button>
             <button className="vod-tool" onClick={toggleFullscreen} title="全屏">⛶</button>
           </div>
           <div className="vod-bar">
